@@ -56,7 +56,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   accountNumber: '0102030405006',
   shebaNumber: 'IR120170000000102030405006',
   telegramBotToken: '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
-  telegramChatId: '200220495',
+  telegramChatId: '8574668861',
 };
 
 // Ready sample products if user requests demo items
@@ -670,11 +670,17 @@ export function getStoredSettings(): StoreSettings {
     const parsed = JSON.parse(data);
     if (parsed.adminPasscode === '1234' || !parsed.adminPasscode) {
       parsed.adminPasscode = '1383';
-      try {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed }));
-      } catch (e) {
-        // Ignore storage errors
-      }
+    }
+    if (parsed.telegramChatId === '200220495' || !parsed.telegramChatId) {
+      parsed.telegramChatId = '8574668861';
+    }
+    if (!parsed.telegramBotToken) {
+      parsed.telegramBotToken = '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
+    }
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed }));
+    } catch (e) {
+      // Ignore storage errors
     }
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch (err) {
@@ -930,13 +936,42 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
   const deletedProductIds = getDeletedProductIds();
   const deletedOrderIds = getDeletedOrderIds();
 
-  // Filter local items if they were marked deleted globally
-  const activeLocalProducts = localProducts.filter(p => p && p.id && !deletedProductIds.has(p.id));
-  const activeLocalOrders = localOrders.filter(o => o && o.id && !deletedOrderIds.has(o.id));
+  const hasRemoteProducts = apiProducts.length > 0 || fsProducts.length > 0 || sbProducts.length > 0;
+  const remoteProdIds = new Set([
+    ...apiProducts.map((p) => p.id),
+    ...fsProducts.map((p) => p.id),
+    ...sbProducts.map((p) => p.id),
+  ]);
+
+  const now = Date.now();
+  const activeLocalProducts = localProducts.filter((p) => {
+    if (!p || !p.id || deletedProductIds.has(p.id)) return false;
+    if (hasRemoteProducts && !remoteProdIds.has(p.id)) {
+      const createdTime = p.createdAt ? new Date(p.createdAt).getTime() : 0;
+      if (now - createdTime > 15000) return false;
+    }
+    return true;
+  });
+
+  const hasRemoteOrders = apiOrders.length > 0 || fsOrders.length > 0 || sbOrders.length > 0;
+  const remoteOrderIds = new Set([
+    ...apiOrders.map((o) => o.id),
+    ...fsOrders.map((o) => o.id),
+    ...sbOrders.map((o) => o.id),
+  ]);
+
+  const activeLocalOrders = localOrders.filter((o) => {
+    if (!o || !o.id || deletedOrderIds.has(o.id)) return false;
+    if (hasRemoteOrders && !remoteOrderIds.has(o.id)) {
+      const createdTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+      if (now - createdTime > 15000) return false;
+    }
+    return true;
+  });
 
   // Safely merge products, orders, and settings from ALL sources using timestamp-based conflict resolution
-  const products = mergeProductsList(activeLocalProducts, sbProducts, apiProducts, fsProducts);
-  const orders = mergeOrdersList(activeLocalOrders, sbOrders, apiOrders, fsOrders);
+  const products = mergeProductsList(activeLocalProducts, sbProducts, apiProducts, fsProducts).filter((p) => !deletedProductIds.has(p.id));
+  const orders = mergeOrdersList(activeLocalOrders, sbOrders, apiOrders, fsOrders).filter((o) => !deletedOrderIds.has(o.id));
   const settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings, apiSettings, sbSettings);
 
   try {
@@ -1005,12 +1040,16 @@ export function subscribeToFirestore(
         const fsProdIds = new Set(fsProds.map((p) => p.id));
         const localProds = getStoredProducts();
 
-        // If snapshot has loaded items, any local product missing from Firestore snapshot was deleted on another device
-        const filteredLocal = fsProds.length > 0
-          ? localProds.filter((p) => fsProdIds.has(p.id) && !deletedIds.has(p.id))
-          : localProds.filter((p) => !deletedIds.has(p.id));
+        const now = Date.now();
+        const pendingLocalProds = localProds.filter((p) => {
+          if (!p || !p.id || deletedIds.has(p.id)) return false;
+          if (fsProdIds.has(p.id)) return false;
+          const createdTime = p.createdAt ? new Date(p.createdAt).getTime() : 0;
+          return now - createdTime < 15000;
+        });
 
-        const mergedProds = mergeProductsList(filteredLocal, fsProds);
+        const activeFsProds = fsProds.filter((p) => !deletedIds.has(p.id));
+        const mergedProds = mergeProductsList(activeFsProds, pendingLocalProds);
         try {
           localStorage.setItem(PRODUCTS_KEY, JSON.stringify(mergedProds));
         } catch (e) {}
@@ -1043,11 +1082,16 @@ export function subscribeToFirestore(
 
         const newIncomingOrders = fsOrds.filter((o) => !localIds.has(o.id) && !deletedIds.has(o.id));
 
-        const filteredLocal = fsOrds.length > 0
-          ? localOrds.filter((o) => fsOrderIds.has(o.id) && !deletedIds.has(o.id))
-          : localOrds.filter((o) => !deletedIds.has(o.id));
+        const now = Date.now();
+        const pendingLocalOrds = localOrds.filter((o) => {
+          if (!o || !o.id || deletedIds.has(o.id)) return false;
+          if (fsOrderIds.has(o.id)) return false;
+          const createdTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+          return now - createdTime < 15000;
+        });
 
-        const mergedOrds = mergeOrdersList(filteredLocal, fsOrds);
+        const activeFsOrders = fsOrds.filter((o) => !deletedIds.has(o.id));
+        const mergedOrds = mergeOrdersList(activeFsOrders, pendingLocalOrds);
         try {
           localStorage.setItem(ORDERS_KEY, JSON.stringify(mergedOrds));
         } catch (e) {}
@@ -1322,7 +1366,7 @@ export async function testTelegramNotification(settings: StoreSettings): Promise
       totalPrice: formatToman(1500000),
       timestamp: new Date().toISOString(),
       telegramToken: settings.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
-      chatId: settings.telegramChatId || '200220495',
+      chatId: settings.telegramChatId || '8574668861',
       webhookUrl: settings.telegramWebhookUrl
     };
 
@@ -1376,7 +1420,7 @@ export async function sendTelegramOrderNotification(order: Order, settings?: Sto
       receiptUrl: order.paymentReceipt,
       timestamp: order.createdAt || new Date().toISOString(),
       telegramToken: settings?.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
-      chatId: settings?.telegramChatId || '200220495',
+      chatId: settings?.telegramChatId || '8574668861',
       webhookUrl: settings?.telegramWebhookUrl,
     };
 

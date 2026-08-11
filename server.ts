@@ -453,7 +453,7 @@ app.post("/api/send-order", async (req, res) => {
     const settings = currentData.settings || {};
 
     const telegramToken = data.telegramToken || settings.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
-    const chatId = data.chatId || settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || '200220495';
+    const chatId = data.chatId || settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || '8574668861';
     const customWebhook = data.webhookUrl || settings.telegramWebhookUrl;
 
     const orderId = data.orderId || data.id || `ORD-${Date.now()}`;
