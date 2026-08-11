@@ -1,0 +1,6 @@
+{
+  "name": "فروشگاه عینک استوک جهانی - stock_jahani",
+  "description": "فروشگاه آنلاین و پنل مدیریت عینک استوک جهانی با سبد خرید، ثبت سفارش و انیمیشن‌های حرفه‌ای",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

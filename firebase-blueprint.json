@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "products": {
+      "title": "Products Collection",
+      "description": "Optical and sunglass products available in the store",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "category": { "type": "string" },
+        "brand": { "type": "string" },
+        "code": { "type": "string" },
+        "lensType": { "type": "string" },
+        "frameMaterial": { "type": "string" },
+        "gender": { "type": "string" },
+        "color": { "type": "string" },
+        "description": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "stock": { "type": "number" },
+        "isSpecialOffer": { "type": "boolean" },
+        "isFeatured": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "price", "category", "images", "stock"]
+    },
+    "orders": {
+      "title": "Orders Collection",
+      "description": "Customer purchase orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderCode": { "type": "string" },
+        "customer": { "type": "object" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "shippingFee": { "type": "number" },
+        "finalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string" },
+        "trackingCode": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "orderCode", "customer", "items", "finalAmount", "status"]
+    },
+    "settings": {
+      "title": "Store Settings",
+      "description": "Global store configuration and contact details",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string" },
+        "phone": { "type": "string" },
+        "telegram": { "type": "string" },
+        "instagram": { "type": "string" },
+        "freeShippingThreshold": { "type": "number" },
+        "shippingFee": { "type": "number" },
+        "cardHolderName": { "type": "string" },
+        "cardNumber": { "type": "string" },
+        "shabaNumber": { "type": "string" },
+        "bankName": { "type": "string" },
+        "aboutUs": { "type": "string" },
+        "adminPassword": { "type": "string" }
+      }
+    }
+  }
+}
