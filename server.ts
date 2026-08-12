@@ -442,6 +442,36 @@ app.post("/api/orders/new", (req, res) => {
   res.json({ success: true, order });
 });
 
+// Helper with exponential backoff retry for Telegram API calls
+async function fetchWithRetry(
+  url: string,
+  options: any,
+  maxRetries = 3,
+  initialDelayMs = 1000
+): Promise<Response> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) {
+        console.log(`[Telegram API Success] ${url.split('/').pop()} succeeded on attempt ${attempt}/${maxRetries} at ${new Date().toISOString()}`);
+        return res;
+      }
+      const errText = await res.clone().text().catch(() => '');
+      console.warn(`[Telegram API Warning] Attempt ${attempt}/${maxRetries} failed with status ${res.status}: ${errText}`);
+      lastError = new Error(`HTTP ${res.status}: ${errText}`);
+    } catch (err: any) {
+      console.warn(`[Telegram API Network Error] Attempt ${attempt}/${maxRetries} failed: ${err?.message || err}`);
+      lastError = err;
+    }
+    if (attempt < maxRetries) {
+      const delay = initialDelayMs * Math.pow(2, attempt - 1);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError || new Error('Failed after retries');
+}
+
 app.post("/api/send-order", async (req, res) => {
   try {
     const data = req.body;
@@ -452,8 +482,8 @@ app.post("/api/send-order", async (req, res) => {
     const currentData = readData();
     const settings = currentData.settings || {};
 
-    const telegramToken = data.telegramToken || settings.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
-    const chatId = data.chatId || settings.telegramChatId || process.env.TELEGRAM_CHAT_ID || '8574668861';
+    const telegramToken = process.env.TELEGRAM_BOT_TOKEN || settings.telegramBotToken || data.telegramToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
+    const chatId = process.env.TELEGRAM_CHAT_ID || settings.telegramChatId || data.chatId || '8574668861';
     const customWebhook = data.webhookUrl || settings.telegramWebhookUrl;
 
     const orderId = data.orderId || data.id || `ORD-${Date.now()}`;
@@ -521,7 +551,7 @@ app.post("/api/send-order", async (req, res) => {
 
     if (customWebhook && typeof customWebhook === 'string' && customWebhook.startsWith('http')) {
       try {
-        await fetch(customWebhook, {
+        await fetchWithRetry(customWebhook, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -532,9 +562,9 @@ app.post("/api/send-order", async (req, res) => {
             messageHtml,
             inlineKeyboard
           })
-        });
+        }, 2, 800);
       } catch (webhookErr) {
-        console.warn('Webhook dispatch error:', webhookErr);
+        console.warn('Webhook dispatch error after retries:', webhookErr);
       }
     }
 
@@ -554,7 +584,7 @@ app.post("/api/send-order", async (req, res) => {
           const blob = new Blob([buffer], { type: 'image/jpeg' });
           formData.append('photo', blob, 'receipt.jpg');
 
-          return await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, {
+          return await fetchWithRetry(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, {
             method: 'POST',
             body: formData as any
           });
@@ -566,7 +596,7 @@ app.post("/api/send-order", async (req, res) => {
             reply_markup: inlineKeyboard
           };
           if (parseMode) payload.parse_mode = parseMode;
-          return await fetch(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, {
+          return await fetchWithRetry(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -582,7 +612,7 @@ app.post("/api/send-order", async (req, res) => {
           reply_markup: inlineKeyboard
         };
         if (parseMode) payload.parse_mode = parseMode;
-        return await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+        return await fetchWithRetry(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -599,12 +629,10 @@ app.post("/api/send-order", async (req, res) => {
             pRes = await sendPhotoAttempt(messagePlain);
             if (pRes && pRes.ok) {
               sentSuccessfully = true;
-            } else if (pRes) {
-              console.warn('Telegram sendPhoto failure:', await pRes.text());
             }
           }
         } catch (photoErr) {
-          console.warn('Telegram photo exception:', photoErr);
+          console.warn('Telegram photo exception after retries:', photoErr);
         }
       }
 
@@ -618,12 +646,10 @@ app.post("/api/send-order", async (req, res) => {
             mRes = await sendMessageAttempt(messagePlain);
             if (mRes && mRes.ok) {
               sentSuccessfully = true;
-            } else if (mRes) {
-              console.error('Telegram sendMessage failure:', await mRes.text());
             }
           }
         } catch (msgErr) {
-          console.error('Telegram sendMessage exception:', msgErr);
+          console.error('Telegram sendMessage exception after retries:', msgErr);
         }
       }
     }
@@ -646,7 +672,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 
       const current = readData();
       const settings = current.settings || {};
-      const telegramToken = settings.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN;
+      const telegramToken = process.env.TELEGRAM_BOT_TOKEN || settings.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
 
       let answerText = "عملیات انجام شد.";
 
@@ -676,7 +702,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 
       if (telegramToken) {
         try {
-          await fetch(`https://api.telegram.org/bot${telegramToken}/answerCallbackQuery`, {
+          await fetchWithRetry(`https://api.telegram.org/bot${telegramToken}/answerCallbackQuery`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -684,7 +710,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
               text: answerText,
               show_alert: true
             })
-          });
+          }, 2, 500);
         } catch (e) {}
 
         if (chatId && messageId) {
@@ -694,7 +720,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
             const updatedText = `${originalCaption}\n\nوضعیت جدید: ${statusLabel}`;
 
             if (callback.message.photo) {
-              await fetch(`https://api.telegram.org/bot${telegramToken}/editMessageCaption`, {
+              await fetchWithRetry(`https://api.telegram.org/bot${telegramToken}/editMessageCaption`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -703,9 +729,9 @@ app.post("/api/telegram-webhook", async (req, res) => {
                   caption: updatedText,
                   parse_mode: 'Markdown'
                 })
-              });
+              }, 2, 500);
             } else {
-              await fetch(`https://api.telegram.org/bot${telegramToken}/editMessageText`, {
+              await fetchWithRetry(`https://api.telegram.org/bot${telegramToken}/editMessageText`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -714,7 +740,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
                   text: updatedText,
                   parse_mode: 'Markdown'
                 })
-              });
+              }, 2, 500);
             }
           } catch (e) {}
         }

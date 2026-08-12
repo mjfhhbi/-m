@@ -1,7 +1,54 @@
 import { Product, Order, StoreSettings, CategoryItem, CouponCode } from '../types';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { collection, getDocs, doc, setDoc, getDoc, deleteDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { getSupabaseClient } from '../lib/supabase';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid || null,
+      email: auth?.currentUser?.email || null,
+      emailVerified: auth?.currentUser?.emailVerified || null,
+      isAnonymous: auth?.currentUser?.isAnonymous || null,
+      tenantId: auth?.currentUser?.tenantId || null,
+      providerInfo: auth?.currentUser?.providerData?.map((provider) => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  return errInfo;
+}
 
 const PRODUCTS_KEY = 'stock_jahani_products_v1';
 const ORDERS_KEY = 'stock_jahani_orders_v1';
@@ -1055,11 +1102,11 @@ export function subscribeToFirestore(
         onDataUpdate({ products: mergedProds });
       },
       (err) => {
-        console.warn('Firestore products snapshot notice:', err);
+        handleFirestoreError(err, OperationType.LIST, 'products');
       }
     );
   } catch (e) {
-    console.warn('Firestore products listener error:', e);
+    handleFirestoreError(e, OperationType.LIST, 'products');
   }
 
   try {
@@ -1097,11 +1144,11 @@ export function subscribeToFirestore(
         onDataUpdate({ orders: mergedOrds, newOrders: newIncomingOrders });
       },
       (err) => {
-        console.warn('Firestore orders snapshot notice:', err);
+        handleFirestoreError(err, OperationType.LIST, 'orders');
       }
     );
   } catch (e) {
-    console.warn('Firestore orders listener error:', e);
+    handleFirestoreError(e, OperationType.LIST, 'orders');
   }
 
   try {
@@ -1121,11 +1168,11 @@ export function subscribeToFirestore(
         }
       },
       (err) => {
-        console.warn('Firestore settings snapshot notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
       }
     );
   } catch (e) {
-    console.warn('Firestore settings listener error:', e);
+    handleFirestoreError(e, OperationType.GET, 'settings/store_settings');
   }
 
   // Fast light-weight version check (sub-10ms endpoint check)

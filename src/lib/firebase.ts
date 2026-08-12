@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   projectId: "gen-lang-client-0588900920",
@@ -16,4 +17,6 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, "ai-studio-webcraft-e223ee03-05ed-4d15-b687-10b9744488fa");
+
+export const auth = getAuth(app);
 
