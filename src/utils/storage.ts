@@ -737,40 +737,39 @@ export async function deleteProductFromFirestore(productId: string): Promise<boo
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(remaining));
   } catch (e) {}
 
-  // Save remaining products to Supabase products_data
-  await saveStoredProducts(remaining);
+  notifyTabsOfChange();
 
-  // Delete from Supabase products table if configured
+  // Save remaining products to Supabase products_data
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
       await supabase.from('products').delete().eq('id', productId);
+      await supabase.from('store_settings').upsert({
+        id: 'products_data',
+        data: { items: remaining, updatedAt: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      });
     } catch (sbErr) {}
   }
 
-  // Delete from backend server API (works everywhere without VPN)
-  fetch('/api/products/delete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId }),
-  }).catch(() => {});
+  // Delete from backend server API and Firestore in parallel
+  Promise.allSettled([
+    fetch('/api/products/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId }),
+    }),
+    fetch(`/api/products/${productId}`, {
+      method: 'DELETE',
+    }),
+    fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ products: remaining }),
+    }),
+    deleteDoc(doc(db, 'products', productId)),
+  ]).catch(() => {});
 
-  fetch(`/api/products/${productId}`, {
-    method: 'DELETE',
-  }).catch(() => {});
-
-  fetch('/api/products', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ products: remaining }),
-  }).catch(() => {});
-
-  // Also attempt Firestore delete in background
-  try {
-    await deleteDoc(doc(db, 'products', productId));
-  } catch (err) {
-    console.warn('Firestore delete product background error:', err);
-  }
   return true;
 }
 
@@ -948,7 +947,7 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
     if (!p || !p.id || deletedProductIds.has(p.id)) return false;
     if (hasRemoteProducts && !remoteProdIds.has(p.id)) {
       const createdTime = p.createdAt ? new Date(p.createdAt).getTime() : 0;
-      if (now - createdTime > 15000) return false;
+      if (now - createdTime > 3000) return false;
     }
     return true;
   });
@@ -964,7 +963,7 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
     if (!o || !o.id || deletedOrderIds.has(o.id)) return false;
     if (hasRemoteOrders && !remoteOrderIds.has(o.id)) {
       const createdTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
-      if (now - createdTime > 15000) return false;
+      if (now - createdTime > 3000) return false;
     }
     return true;
   });
@@ -1045,7 +1044,7 @@ export function subscribeToFirestore(
           if (!p || !p.id || deletedIds.has(p.id)) return false;
           if (fsProdIds.has(p.id)) return false;
           const createdTime = p.createdAt ? new Date(p.createdAt).getTime() : 0;
-          return now - createdTime < 15000;
+          return now - createdTime < 3000;
         });
 
         const activeFsProds = fsProds.filter((p) => !deletedIds.has(p.id));
@@ -1087,7 +1086,7 @@ export function subscribeToFirestore(
           if (!o || !o.id || deletedIds.has(o.id)) return false;
           if (fsOrderIds.has(o.id)) return false;
           const createdTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
-          return now - createdTime < 15000;
+          return now - createdTime < 3000;
         });
 
         const activeFsOrders = fsOrds.filter((o) => !deletedIds.has(o.id));
@@ -1254,7 +1253,7 @@ export function notifyTabsOfChange() {
     } catch (e) {}
   }
 }
-export function fileToBase64(file: File, maxWidth = 750, quality = 0.70): Promise<string> {
+export function fileToBase64(file: File, maxWidth = 600, quality = 0.60): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -1306,42 +1305,27 @@ export function formatToman(amount: number): string {
 }
 
 export async function checkProductStock(productId: string): Promise<Product | null> {
-  let apiProduct: Product | null = null;
-  let supabaseProduct: Product | null = null;
-
-  try {
-    const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.products)) {
-        const found = data.products.find((p: Product) => p.id === productId);
-        if (found) apiProduct = found;
-      }
-    }
-  } catch (e) {}
-
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data } = await supabase.from('products').select('*').eq('id', productId).maybeSingle();
-      if (data && data.data) {
-        supabaseProduct = data.data as Product;
-      }
-    } catch (e) {}
-  }
-
   const localProducts = getStoredProducts();
   const localProduct = localProducts.find((p) => p.id === productId) || null;
 
-  const candidates = [apiProduct, supabaseProduct, localProduct].filter(Boolean) as Product[];
-  if (candidates.length === 0) return null;
+  try {
+    const fetchApiPromise = fetch('/api/data?t=' + Date.now(), { cache: 'no-store' }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.products)) {
+          return data.products.find((p: Product) => p.id === productId) || null;
+        }
+      }
+      return null;
+    });
 
-  const baseProduct = mergeProductsList(candidates, [])[0] || candidates[0];
-  const minStock = Math.min(
-    ...candidates.map((c) => (typeof c.stock === 'number' ? c.stock : 0))
-  );
+    const apiProduct = await withTimeout(fetchApiPromise, 1000).catch(() => null);
+    if (apiProduct) {
+      return apiProduct;
+    }
+  } catch (e) {}
 
-  return { ...baseProduct, stock: minStock };
+  return localProduct;
 }
 
 export async function testTelegramNotification(settings: StoreSettings): Promise<{ success: boolean; message: string }> {

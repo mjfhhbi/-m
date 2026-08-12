@@ -155,7 +155,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       try {
-        const base64 = await fileToBase64(file);
+        const base64 = await fileToBase64(file, 600, 0.60);
         setReceiptImage(base64);
       } catch (err) {
         console.error('Error loading receipt:', err);
@@ -173,20 +173,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       return;
     }
 
-    setIsSubmitting(true);
-    setErrorMessage('');
-
-    // ۱. بررسی موجودی محصولات قبل از ثبت نهایی
-    for (const item of items) {
-      if (!item.product) continue;
-      const productRef = await checkProductStock(item.product.id);
-      if (!productRef || productRef.stock < item.quantity) {
-        setErrorMessage(`متأسفانه محصول "${item.product.title}" تمام شده یا به این تعداد موجود نیست.`);
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
     if (
       !customer.fullName.trim() || 
       !customer.phone.trim() || 
@@ -194,20 +180,43 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       !customer.postalCode.trim()
     ) {
       setErrorMessage('لطفاً نام، شماره تماس، آدرس دقیق و کد پستی ۱۰ رقمی را وارد کنید.');
-      setIsSubmitting(false);
       return;
     }
 
     if (customer.postalCode.trim().length < 5) {
       setErrorMessage('کد پستی وارد شده معتبر نیست. لطفاً کد پستی ۱۰ رقمی را وارد نمایید.');
-      setIsSubmitting(false);
       return;
     }
 
     if (paymentMethod === 'card_to_card' && !receiptImage) {
       setErrorMessage('لطفاً ابتدا تصویر فیش یا رسید واریزی کارت به کارت را آپلود کنید تا ثبت سفارش مجاز شود.');
-      setIsSubmitting(false);
       return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    // ۱. بررسی موجودی محصولات قبل از ثبت نهایی (سریع و موازی)
+    try {
+      const stockChecks = await Promise.all(
+        items.map(async (item) => {
+          if (!item.product) return null;
+          const productRef = await checkProductStock(item.product.id);
+          if (!productRef || productRef.stock < item.quantity) {
+            return item.product.title;
+          }
+          return null;
+        })
+      );
+
+      const outOfStockItem = stockChecks.find(Boolean);
+      if (outOfStockItem) {
+        setErrorMessage(`متأسفانه محصول "${outOfStockItem}" تمام شده یا به این تعداد موجود نیست.`);
+        setIsSubmitting(false);
+        return;
+      }
+    } catch (e) {
+      console.warn('Stock check notice:', e);
     }
 
     // Save profile for future checkouts
