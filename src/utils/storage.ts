@@ -1,7 +1,6 @@
 import { Product, Order, StoreSettings, CategoryItem, CouponCode } from '../types';
 import { db, auth } from '../lib/firebase';
 import { collection, getDocs, doc, setDoc, getDoc, deleteDoc, writeBatch, onSnapshot } from 'firebase/firestore';
-import { getSupabaseClient } from '../lib/supabase';
 
 export enum OperationType {
   CREATE = 'create',
@@ -234,46 +233,10 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
     body: JSON.stringify({ products }),
   }).catch(() => {});
 
-  // Sync to Supabase
-  const supabase = getSupabaseClient();
-  let supabasePromise = Promise.resolve();
-  if (supabase) {
-    supabasePromise = (async () => {
-      try {
-        let mergedItems = products;
-        try {
-          const existingRes = await supabase.from('store_settings').select('*').eq('id', 'products_data').maybeSingle();
-          const existingItems: Product[] = existingRes?.data?.data?.items && Array.isArray(existingRes.data.data.items)
-            ? existingRes.data.data.items
-            : [];
-          mergedItems = mergeProductsList(existingItems, products);
-        } catch (e) {}
-
-        await supabase
-          .from('store_settings')
-          .upsert({
-            id: 'products_data',
-            data: { items: mergedItems, updatedAt: new Date().toISOString() },
-            updated_at: new Date().toISOString(),
-          });
-
-        if (products.length > 0) {
-          try {
-            await supabase
-              .from('products')
-              .upsert(products.map((p) => ({ id: p.id, data: p, updated_at: new Date().toISOString() })));
-          } catch (e) {}
-        }
-      } catch (sbErr) {
-        console.warn('Supabase products sync error:', sbErr);
-      }
-    })();
-  }
-
-  // Non-blocking background remote sync for Firestore
+  // Primary persistent sync for Firestore
   const firestorePromise = (async () => {
     try {
-      const existingSnap = await withTimeout(getDocs(collection(db, 'products')), 2000);
+      const existingSnap = await withTimeout(getDocs(collection(db, 'products')), 3000);
       const currentIds = new Set(products.map((p) => p.id));
       const batch = writeBatch(db);
 
@@ -290,6 +253,7 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
 
       await batch.commit();
     } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'products');
       for (const p of products) {
         try {
           await setDoc(doc(db, 'products', p.id), cleanForFirestore(p));
@@ -299,7 +263,7 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
   })();
 
   await Promise.allSettled([
-    supabasePromise,
+    firestorePromise,
     withTimeout(apiPromise, 3000),
   ]);
 
@@ -493,18 +457,7 @@ export async function processPendingSyncQueue() {
 
     let synced = false;
 
-    // 1. Try Supabase (100% unblocked in Iran, no VPN needed)
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        const { error } = await supabase.from('orders').upsert(
-          pendingOrders.map((o) => ({ id: o.id, data: o, updated_at: new Date().toISOString() }))
-        );
-        if (!error) synced = true;
-      } catch (e) {}
-    }
-
-    // 2. Try Server API
+    // 1. Try Server API
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -514,7 +467,7 @@ export async function processPendingSyncQueue() {
       if (res.ok) synced = true;
     } catch (e) {}
 
-    // 3. Try Firestore if accessible
+    // 2. Try Firestore
     try {
       for (const o of pendingOrders) {
         await setDoc(doc(db, 'orders', o.id), cleanForFirestore(o));
@@ -544,31 +497,7 @@ export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
 
   const cleanOrders = orders.map(cleanForFirestore);
 
-  // 2. Immediate Supabase sync (Unblocked in Iran, no VPN needed)
-  const supabase = getSupabaseClient();
-  if (supabase && cleanOrders.length > 0) {
-    (async () => {
-      try {
-        await Promise.allSettled([
-          supabase
-            .from('orders')
-            .upsert(cleanOrders.map((o) => ({ id: o.id, data: o, updated_at: new Date().toISOString() }))),
-          supabase
-            .from('store_settings')
-            .upsert({
-              id: 'orders_data',
-              data: { items: cleanOrders, updatedAt: new Date().toISOString() },
-              updated_at: new Date().toISOString(),
-            })
-        ]);
-      } catch (err) {
-        console.warn('Supabase order save network error:', err);
-        enqueuePendingOrders(orders);
-      }
-    })();
-  }
-
-  // 3. Immediate Server API sync (/api/orders)
+  // 2. Immediate Server API sync (/api/orders)
   fetch('/api/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -577,10 +506,10 @@ export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
     enqueuePendingOrders(orders);
   });
 
-  // 4. Non-blocking background Firestore sync (never freezes if Google is filtered without VPN)
+  // 3. Persistent Firestore sync
   (async () => {
     try {
-      const existingSnap = await withTimeout(getDocs(collection(db, 'orders')), 2500);
+      const existingSnap = await withTimeout(getDocs(collection(db, 'orders')), 3000);
       const currentIds = new Set(orders.map((o) => o.id));
       const batch = writeBatch(db);
 
@@ -596,6 +525,7 @@ export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
 
       await batch.commit();
     } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'orders');
       for (const o of cleanOrders) {
         try {
           await setDoc(doc(db, 'orders', o.id), o);
@@ -651,7 +581,7 @@ export async function saveSingleOrder(order: Order): Promise<boolean> {
     console.error('Error saving order to localStorage:', err);
   }
 
-  // 2. Fire Server API, Firestore, and Supabase ALL IN PARALLEL!
+  // 2. Fire Server API and Firestore in parallel
   const apiPromise = fetch('/api/orders/new', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -662,34 +592,10 @@ export async function saveSingleOrder(order: Order): Promise<boolean> {
 
   const firestorePromise = setDoc(doc(db, 'orders', cleanOrder.id), cleanOrder)
     .then(() => true)
-    .catch(() => false);
-
-  const supabase = getSupabaseClient();
-  const supabasePromise = supabase
-    ? (async () => {
-        try {
-          const p1 = supabase
-            .from('orders')
-            .upsert([{ id: cleanOrder.id, data: cleanOrder, updated_at: new Date().toISOString() }]);
-
-          const p2 = (async () => {
-            const res = await supabase.from('store_settings').select('*').eq('id', 'orders_data').maybeSingle();
-            const existingOrders: Order[] = res?.data?.data?.items && Array.isArray(res.data.data.items) ? res.data.data.items : [];
-            const merged = mergeOrdersList(existingOrders, [cleanOrder]);
-            await supabase.from('store_settings').upsert({
-              id: 'orders_data',
-              data: { items: merged, updatedAt: new Date().toISOString() },
-              updated_at: new Date().toISOString(),
-            });
-          })();
-
-          await Promise.allSettled([p1, p2]);
-          return true;
-        } catch (e) {
-          return false;
-        }
-      })()
-    : Promise.resolve(false);
+    .catch((err) => {
+      handleFirestoreError(err, OperationType.WRITE, `orders/${cleanOrder.id}`);
+      return false;
+    });
 
   let savedRemote = false;
   try {
@@ -699,10 +605,9 @@ export async function saveSingleOrder(order: Order): Promise<boolean> {
     console.warn('Express order sync notice:', e);
   }
 
-  // Allow Firestore and Supabase to finish in background silently
-  Promise.allSettled([firestorePromise, supabasePromise]).then((results) => {
-    const bgSuccess = results.some((r) => r.status === 'fulfilled' && r.value === true);
-    if (!savedRemote && !bgSuccess) {
+  // Allow Firestore to finish in background silently
+  firestorePromise.then((success) => {
+    if (!savedRemote && !success) {
       enqueuePendingOrders([cleanOrder]);
     }
   });
@@ -748,20 +653,6 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
     console.error('Error saving settings locally:', err);
   }
 
-  // Sync to Supabase FIRST (Unblocked in Iran, no VPN needed)
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    (async () => {
-      try {
-        await supabase
-          .from('store_settings')
-          .upsert({ id: 'main', data: updatedSettings, updated_at: new Date().toISOString() });
-      } catch (sbErr) {
-        console.warn('Supabase settings sync error:', sbErr);
-      }
-    })();
-  }
-
   // Sync to Server API
   fetch('/api/settings', {
     method: 'POST',
@@ -769,8 +660,10 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
     body: JSON.stringify({ settings: updatedSettings }),
   }).catch(() => {});
 
-  // Background non-blocking Firestore sync
-  setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(updatedSettings)).catch(() => {});
+  // Primary Firestore settings sync
+  setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(updatedSettings)).catch((err) => {
+    handleFirestoreError(err, OperationType.WRITE, 'settings/store_settings');
+  });
 
   return true;
 }
@@ -785,19 +678,6 @@ export async function deleteProductFromFirestore(productId: string): Promise<boo
   } catch (e) {}
 
   notifyTabsOfChange();
-
-  // Save remaining products to Supabase products_data
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      await supabase.from('products').delete().eq('id', productId);
-      await supabase.from('store_settings').upsert({
-        id: 'products_data',
-        data: { items: remaining, updatedAt: new Date().toISOString() },
-        updated_at: new Date().toISOString(),
-      });
-    } catch (sbErr) {}
-  }
 
   // Delete from backend server API and Firestore in parallel
   Promise.allSettled([
@@ -814,7 +694,9 @@ export async function deleteProductFromFirestore(productId: string): Promise<boo
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ products: remaining }),
     }),
-    deleteDoc(doc(db, 'products', productId)),
+    deleteDoc(doc(db, 'products', productId)).catch((err) => {
+      handleFirestoreError(err, OperationType.DELETE, `products/${productId}`);
+    }),
   ]).catch(() => {});
 
   return true;
@@ -829,20 +711,7 @@ export async function deleteOrderFromFirestore(orderId: string): Promise<boolean
     localStorage.setItem(ORDERS_KEY, JSON.stringify(remaining));
   } catch (e) {}
 
-  // Delete from Supabase if configured (both table and store_settings JSON)
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      await supabase.from('orders').delete().eq('id', orderId);
-      await supabase.from('store_settings').upsert({
-        id: 'orders_data',
-        data: { items: remaining, updatedAt: new Date().toISOString() },
-        updated_at: new Date().toISOString(),
-      });
-    } catch (sbErr) {}
-  }
-
-  // Delete from backend server API (works everywhere without VPN)
+  // Delete from backend server API
   fetch('/api/orders/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -859,16 +728,16 @@ export async function deleteOrderFromFirestore(orderId: string): Promise<boolean
     body: JSON.stringify({ orders: remaining }),
   }).catch(() => {});
 
-  // Also attempt Firestore delete in background
+  // Also Firestore delete
   try {
     await deleteDoc(doc(db, 'orders', orderId));
   } catch (err) {
-    console.warn('Firestore delete order background error:', err);
+    handleFirestoreError(err, OperationType.DELETE, `orders/${orderId}`);
   }
   return true;
 }
 
-// Fetch and merge all shared data from Express Server API, Supabase, Firestore, and LocalStorage
+// Fetch and merge all shared data from Express Server API, Firestore, and LocalStorage
 export async function fetchServerData(): Promise<{ products: Product[]; orders: Order[]; settings: StoreSettings }> {
   // Process any pending offline/network retry queue first
   processPendingSyncQueue();
@@ -881,15 +750,11 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
   let apiOrders: Order[] = [];
   let apiSettings: StoreSettings | null = null;
 
-  let sbProducts: Product[] = [];
-  let sbOrders: Order[] = [];
-  let sbSettings: StoreSettings | null = null;
-
   let fsProducts: Product[] = [];
   let fsOrders: Order[] = [];
   let fsSettings: StoreSettings | null = null;
 
-  // 1. Fetch from Express Server API (Primary ultra-fast source)
+  // 1. Fetch from Express Server API (Primary fast source)
   try {
     const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
     if (res.ok) {
@@ -910,83 +775,44 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
     console.warn('Express API fetch notice:', e);
   }
 
-  // 2. Fetch from Supabase and Firestore asynchronously with 4s max timeout
-  const supabase = getSupabaseClient();
-  const remoteSync = Promise.allSettled([
-    supabase
-      ? (async () => {
-          try {
-            // First check JSONB store in store_settings (id='products_data')
-            const resData = await supabase.from('store_settings').select('*').eq('id', 'products_data').maybeSingle();
-            if (resData?.data?.data?.items && Array.isArray(resData.data.data.items)) {
-              sbProducts = resData.data.data.items as Product[];
-            }
-            // Also check relational products table if populated
-            const resTable = await supabase.from('products').select('*');
-            if (resTable?.data && resTable.data.length > 0) {
-              const tableProds = resTable.data.map((r: any) => {
-                if (!r || typeof r !== 'object') return null;
-                const dataObj = r.data && typeof r.data === 'object' ? r.data : r;
-                return { id: r.id || dataObj.id, ...dataObj };
-              }).filter((p: any) => p && p.id);
-              sbProducts = mergeProductsList(sbProducts, tableProds);
-            }
-          } catch (e) {}
-        })()
-      : Promise.resolve(),
-    supabase
-      ? (async () => {
-          try {
-            // First check JSONB store in store_settings (id='orders_data')
-            const resData = await supabase.from('store_settings').select('*').eq('id', 'orders_data').maybeSingle();
-            if (resData?.data?.data?.items && Array.isArray(resData.data.data.items)) {
-              sbOrders = resData.data.data.items as Order[];
-            }
-            // Also check relational orders table
-            const resTable = await supabase.from('orders').select('*');
-            if (resTable?.data && resTable.data.length > 0) {
-              const tableOrders = resTable.data.map((r: any) => {
-                if (!r || typeof r !== 'object') return null;
-                const dataObj = r.data && typeof r.data === 'object' ? r.data : r;
-                return { id: r.id || dataObj.id, ...dataObj };
-              }).filter((o: any) => o && o.id);
-              sbOrders = mergeOrdersList(sbOrders, tableOrders);
-            }
-          } catch (e) {}
-        })()
-      : Promise.resolve(),
-    supabase
-      ? (async () => {
-          try {
-            const res = await supabase.from('store_settings').select('*').eq('id', 'main').maybeSingle();
-            if (res?.data?.data) sbSettings = res.data.data as StoreSettings;
-          } catch (e) {}
-        })()
-      : Promise.resolve(),
-    withTimeout(
-      Promise.all([
-        getDocs(collection(db, 'orders')),
-        getDocs(collection(db, 'products')),
-        getDoc(doc(db, 'settings', 'store_settings')),
-      ]).then(([ordersSnap, productsSnap, settingsDoc]) => {
-        ordersSnap.forEach((d) => d.exists() && fsOrders.push(d.data() as Order));
-        productsSnap.forEach((d) => d.exists() && fsProducts.push(d.data() as Product));
-        if (settingsDoc.exists()) fsSettings = settingsDoc.data() as StoreSettings;
+  // 2. Fetch from Firestore asynchronously with 4s max timeout
+  const remoteSync = withTimeout(
+    Promise.all([
+      getDocs(collection(db, 'orders')).catch((err) => {
+        handleFirestoreError(err, OperationType.LIST, 'orders');
+        return null;
       }),
-      4000
-    ).catch(() => {})
-  ]);
+      getDocs(collection(db, 'products')).catch((err) => {
+        handleFirestoreError(err, OperationType.LIST, 'products');
+        return null;
+      }),
+      getDoc(doc(db, 'settings', 'store_settings')).catch((err) => {
+        handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
+        return null;
+      }),
+    ]).then(([ordersSnap, productsSnap, settingsDoc]) => {
+      if (ordersSnap) {
+        ordersSnap.forEach((d) => d.exists() && fsOrders.push(d.data() as Order));
+      }
+      if (productsSnap) {
+        productsSnap.forEach((d) => d.exists() && fsProducts.push(d.data() as Product));
+      }
+      if (settingsDoc && settingsDoc.exists()) {
+        fsSettings = settingsDoc.data() as StoreSettings;
+      }
+    }),
+    4000
+  ).catch(() => {});
 
   await withTimeout(remoteSync, 4000).catch(() => {});
 
   const deletedProductIds = getDeletedProductIds();
   const deletedOrderIds = getDeletedOrderIds();
 
-  const hasRemoteProducts = apiProducts.length > 0 || fsProducts.length > 0 || sbProducts.length > 0;
+  const hasRemoteProducts = apiProducts.length > 0 || fsProducts.length > 0;
   const remoteProdIds = new Set([
     ...apiProducts.map((p) => p.id),
     ...fsProducts.map((p) => p.id),
-    ...sbProducts.map((p) => p.id),
   ]);
 
   const now = Date.now();
@@ -999,11 +825,10 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
     return true;
   });
 
-  const hasRemoteOrders = apiOrders.length > 0 || fsOrders.length > 0 || sbOrders.length > 0;
+  const hasRemoteOrders = apiOrders.length > 0 || fsOrders.length > 0;
   const remoteOrderIds = new Set([
     ...apiOrders.map((o) => o.id),
     ...fsOrders.map((o) => o.id),
-    ...sbOrders.map((o) => o.id),
   ]);
 
   const activeLocalOrders = localOrders.filter((o) => {
@@ -1016,9 +841,9 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
   });
 
   // Safely merge products, orders, and settings from ALL sources using timestamp-based conflict resolution
-  const products = mergeProductsList(activeLocalProducts, sbProducts, apiProducts, fsProducts).filter((p) => !deletedProductIds.has(p.id));
-  const orders = mergeOrdersList(activeLocalOrders, sbOrders, apiOrders, fsOrders).filter((o) => !deletedOrderIds.has(o.id));
-  const settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings, apiSettings, sbSettings);
+  const products = mergeProductsList(activeLocalProducts, apiProducts, fsProducts).filter((p) => !deletedProductIds.has(p.id));
+  const orders = mergeOrdersList(activeLocalOrders, apiOrders, fsOrders).filter((o) => !deletedOrderIds.has(o.id));
+  const settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings, apiSettings);
 
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
@@ -1044,26 +869,6 @@ export function subscribeToFirestore(
   let lastServerVersion = 0;
   let lastStateHash = '';
   let isPolling = false;
-
-  // Supabase Realtime Subscription if configured by user
-  const supabase = getSupabaseClient();
-  let supabaseChannel: any = null;
-
-  if (supabase) {
-    try {
-      supabaseChannel = supabase
-        .channel('public-store-changes')
-        .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
-          const freshData = await fetchServerData();
-          if (freshData) {
-            onDataUpdate(freshData);
-          }
-        })
-        .subscribe();
-    } catch (sbRealtimeErr) {
-      console.warn('Supabase realtime channel error:', sbRealtimeErr);
-    }
-  }
 
   // Active Firestore onSnapshot listeners for instant broadcasting across clients
   let unsubFsProducts: (() => void) | null = null;
@@ -1278,11 +1083,6 @@ export function subscribeToFirestore(
     window.removeEventListener('storage', handleStorageChange);
     if (syncChannel) {
       syncChannel.onmessage = null;
-    }
-    if (supabaseChannel && supabase) {
-      try {
-        supabase.removeChannel(supabaseChannel);
-      } catch (e) {}
     }
     if (unsubFsProducts) unsubFsProducts();
     if (unsubFsOrders) unsubFsOrders();

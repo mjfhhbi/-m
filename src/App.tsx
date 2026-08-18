@@ -40,6 +40,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { CustomerOrderTrackerModal } from './components/CustomerOrderTrackerModal';
 import { InvoiceModal } from './components/InvoiceModal';
 import { SupportModal } from './components/SupportModal';
+import { IntroSplash } from './components/IntroSplash';
 import { SeoHead } from './components/SeoHead';
 import { Toast } from './components/Toast';
 
@@ -71,6 +72,15 @@ export default function App() {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showIntroSplash, setShowIntroSplash] = useState<boolean>(() => {
+    // Show on initial session load
+    if (typeof window !== 'undefined') {
+      const isParam = new URLSearchParams(window.location.search).get('view') === 'admin';
+      if (isParam) return false;
+      return true;
+    }
+    return false;
+  });
 
   // Admin Security Auth State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
@@ -822,6 +832,14 @@ export default function App() {
 
       {/* Floating Toast Notification */}
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+
+      {/* Intro Animated Entrance Screen */}
+      {showIntroSplash && (
+        <IntroSplash
+          settings={settings}
+          onFinish={() => setShowIntroSplash(false)}
+        />
+      )}
 
       {/* Footer */}
       <footer className="bg-zinc-950 border-t border-zinc-800/80 py-8 px-4 sm:px-6 mt-12 text-right dir-rtl text-xs text-zinc-500">

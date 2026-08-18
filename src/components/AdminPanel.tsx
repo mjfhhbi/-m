@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Product, Order, StoreSettings, OrderStatus, CategoryType, CategoryItem, CouponCode } from '../types';
 import { formatToman, fileToBase64, DEMO_PRODUCTS, exportBackupData, importBackupData, DEFAULT_CATEGORIES, DEFAULT_COUPONS, testTelegramNotification } from '../utils/storage';
-import { getSupabaseCredentials, SUPABASE_SQL_SCRIPT, resetSupabaseClient } from '../lib/supabase';
 import { 
   Plus, 
   Edit, 
@@ -220,12 +219,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Settings local state
   const [tempSettings, setTempSettings] = useState<StoreSettings>({ ...settings });
   const [copiedType, setCopiedType] = useState<'store' | 'admin' | null>(null);
-
-  // Supabase state
-  const initialSb = getSupabaseCredentials();
-  const [supabaseUrlInput, setSupabaseUrlInput] = useState(initialSb.url);
-  const [supabaseKeyInput, setSupabaseKeyInput] = useState(initialSb.key);
-  const [sqlCopied, setSqlCopied] = useState(false);
 
 
   // Coupon management state
@@ -1816,136 +1809,57 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
-          {/* Explanation Box for Iran VPN & GitHub Pages deployment */}
-          <div className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-xl text-xs text-amber-200 leading-relaxed space-y-1">
-            <div className="font-bold text-amber-400 flex items-center gap-1.5">
-              <Globe className="w-4 h-4" />
-              <span>💡 دلیل نیاز به فیلترشکن در لینک پیش‌نمایش و راهکار اجرای بدون فیلترشکن:</span>
-            </div>
-            <p>
-              <strong>۱. لینک پیش‌نمایش فعلی:</strong> دامنه این صفحه مربوط به سرور ابری Google Cloud Run (پسوند <code className="text-amber-300">*.run.app</code>) است که توسط اپراتورهای ایران (همراه اول، ایرانسل و...) فیلتر شده است؛ به همین دلیل باز کردن این محیط پیش‌نمایش نیاز به فیلترشکن دارد.
-            </p>
-            <p>
-              <strong>۲. اجرای ۱۰۰٪ بدون فیلترشکن روی GitHub Pages:</strong> وقتی پروژه را روی GitHub Pages (دامنه <code className="text-emerald-300">*.github.io</code>) یا Vercel یا دامنه خودتان قرار دهید، سایت <strong>بدون نیاز به هیچ‌گونه فیلترشکنی روی تمام گوشی‌ها و اپراتورهای ایران باز می‌شود</strong> و اطلاعات محصولات و سفارشات را بدون فیلترشکن با Supabase همگام‌سازی می‌کند.
-            </p>
-          </div>
-
-          {/* Supabase Integration Section for Unblocked GitHub Pages / Vercel deployment */}
-          <div className="bg-zinc-950 p-4 rounded-xl border border-emerald-500/30 space-y-3">
+          {/* Firebase Firestore Cloud Database Status & Real-time Sync */}
+          <div className="bg-zinc-950 p-4 rounded-xl border border-amber-500/30 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                <Database className="w-4 h-4 text-emerald-400" />
-                <span>دیتابیس آنلاین بدون تحریم سوپابیس (Supabase) برای GitHub Pages و گوشی‌ها</span>
+              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-amber-400" />
+                <span>پایگاه داده ابری فایربیس (Firebase Firestore) و همگام‌سازی زنده</span>
               </h4>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                supabaseUrlInput && supabaseKeyInput 
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
-                  : 'bg-zinc-800 text-zinc-400'
-              }`}>
-                {supabaseUrlInput && supabaseKeyInput ? '⚡ فعال در سوپابیس' : 'غیرفعال (استفاده از حافظه داخلی)'}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>⚡ شنودگر Real-time فعال</span>
               </span>
             </div>
 
             <p className="text-[11px] text-zinc-300 leading-relaxed">
-              سوپابیس (Supabase) بر روی تمام اپراتورهای موبایل و اینترنت ایران (همراه اول، ایرانسل، مخابرات و...) <strong>بدون نیاز به فیلترشکن</strong> کاملاً باز است و با GitHub Pages و Vercel سازگار می‌باشد.
+              تمام اطلاعات محصولات، سفارشات مشتریان و تنظیمات فروشگاه مستقیماً بر روی پایگاه داده ابری Firestore به صورت زنده (Real-time با <code className="text-amber-300">onSnapshot</code>) و همزمان روی سرور و حافظه محلی ذخیره و همگام‌سازی می‌شوند.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-[11px] font-medium text-zinc-300 mb-1">
-                  آدرس پروژه Supabase URL
-                </label>
-                <input
-                  type="text"
-                  value={supabaseUrlInput}
-                  onChange={(e) => setSupabaseUrlInput(e.target.value.trim())}
-                  placeholder="https://xyz.supabase.co"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-emerald-400 font-mono dir-ltr text-left focus:outline-none focus:border-emerald-500"
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded-xl text-center">
+                <div className="text-[10px] text-zinc-400">کالکشن محصولات</div>
+                <div className="text-xs font-bold text-amber-400 mt-1 font-mono">products ({products.length})</div>
               </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-zinc-300 mb-1">
-                  کلید عمومی Supabase Anon Key
-                </label>
-                <input
-                  type="password"
-                  value={supabaseKeyInput}
-                  onChange={(e) => setSupabaseKeyInput(e.target.value.trim())}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-emerald-400 font-mono dir-ltr text-left focus:outline-none focus:border-emerald-500"
-                />
+              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded-xl text-center">
+                <div className="text-[10px] text-zinc-400">کالکشن سفارشات</div>
+                <div className="text-xs font-bold text-emerald-400 mt-1 font-mono">orders ({orders.length})</div>
+              </div>
+              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded-xl text-center">
+                <div className="text-[10px] text-zinc-400">تنظیمات فروشگاه</div>
+                <div className="text-xs font-bold text-sky-400 mt-1 font-mono">settings/store_settings</div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => {
-                  if (!supabaseUrlInput || !supabaseKeyInput) {
-                    onShowToast('لطفاً آدرس و کلید Anon Key سوپابیس را وارد کنید');
-                    return;
-                  }
-                  localStorage.setItem('supabase_url', supabaseUrlInput);
-                  localStorage.setItem('supabase_key', supabaseKeyInput);
-                  resetSupabaseClient();
-                  onShowToast('تنظیمات اتصال به سوپابیس ذخیره گردید. دیتابیس آنلاین فعال است!');
-                }}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>ذخیره و فعال‌سازی اتصال سوپابیس</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(SUPABASE_SQL_SCRIPT);
-                  setSqlCopied(true);
-                  onShowToast('کد اسکریپت ساخت جداول دیتابیس کپی شد!');
-                  setTimeout(() => setSqlCopied(false), 2500);
+                  onRefreshData();
+                  onShowToast('اطلاعات با موفقیت از Firebase Firestore به‌روزرسانی شد');
                 }}
                 className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
               >
-                {sqlCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-amber-400" />}
-                <span>کپی کد SQL ساخت جداول سوپابیس</span>
+                <RefreshCw className="w-4 h-4 text-amber-400" />
+                <span>بررسی اتصال و همگام‌سازی مجدد با فایربیس</span>
               </button>
-
-              {supabaseUrlInput && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    localStorage.removeItem('supabase_url');
-                    localStorage.removeItem('supabase_key');
-                    setSupabaseUrlInput('');
-                    setSupabaseKeyInput('');
-                    resetSupabaseClient();
-                    onShowToast('اتصال سوپابیس حذف شد');
-                  }}
-                  className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-2 rounded-xl text-xs font-bold transition-colors"
-                >
-                  حذف تنظیمات
-                </button>
-              )}
-            </div>
-
-            <div className="bg-zinc-900/90 p-3 rounded-xl border border-zinc-800 text-[11px] text-zinc-400 space-y-1">
-              <span className="font-bold text-amber-400 block">💡 راهنمای اتصال سریع به Supabase (رایگان):</span>
-              <p>۱. در وب‌سایت <code className="text-emerald-400">supabase.com</code> یک پروژه جدید رایگان بسازید.</p>
-              <p>۲. از بخش Project Settings &gt; API آدرس Project URL و کلید anon/public key را کپی و در کادرهای بالا وارد کنید.</p>
-              <p>۳. از منوی سمت چپ به بخش SQL Editor بروید و دکمه «کپی کد SQL ساخت جداول» بالا را بزنید، کد کپی شده را آنجا Paste و دکمه Run را بزنید.</p>
             </div>
           </div>
 
           <button
             onClick={() => {
               onSaveSettings(tempSettings);
-              if (supabaseUrlInput && supabaseKeyInput) {
-                localStorage.setItem('supabase_url', supabaseUrlInput);
-                localStorage.setItem('supabase_key', supabaseKeyInput);
-                resetSupabaseClient();
-              }
-              onShowToast('تنظیمات فروشگاه و دیتابیس با موفقیت ذخیره شد');
+              onShowToast('تنظیمات فروشگاه با موفقیت ذخیره شد');
             }}
             className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 rounded-xl text-xs transition-colors shadow-lg"
           >
