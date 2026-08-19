@@ -1,164 +1,29 @@
 {
-  "products": [
-    {
-      "id": "demo-1",
-      "title": "عینک آفتابی فریم خلبانی استوک اروپایی",
-      "code": "STK-901",
-      "category": "sunglasses",
-      "price": 1850000,
-      "originalPrice": 2400000,
-      "frameType": "فلزی استیل ضدزنگ",
-      "lensColor": "دودی هایلایت (Graded Green)",
-      "uvProtection": "UV400 + Polarized",
-      "gender": "اسپرت (یونی‌سکس)",
-      "images": [
-        "https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&q=80&w=800",
-        "https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&q=80&w=800"
-      ],
-      "description": "عینک آفتابی خلبانی کلاسیک با کیفیت ساخت درجه یک اروپایی، دارای لنز پلاریزه با وضوح دید فوق‌العاده و محافظت ۱۰۰٪ در برابر اشعه‌های مضر UV. بسیار سبک و مناسب استفاده طولانی‌مدت و رانندگی.",
-      "features": [
-        "عدسی پلاریزه واقعی",
-        "پد بینی سیلیکونی نرم",
-        "همراه با هارد کیس و دستمال نانو میکروفایبر",
-        "سبک و مقاوم"
-      ],
-      "stock": 5,
-      "isFeatured": true,
-      "createdAt": "2026-08-18T22:32:23.829Z"
-    },
-    {
-      "id": "demo-2",
-      "title": "عینک طبی کائوچویی فریم گربه‌ای تام فورد",
-      "code": "STK-408",
-      "category": "optical",
-      "price": 1650000,
-      "originalPrice": 1950000,
-      "frameType": "کائوچو استات درجه یک",
-      "lensColor": "شفاف بلوکات (BlueCut)",
-      "uvProtection": "UV400 + Anti-Reflective",
-      "gender": "زنانه",
-      "images": [
-        "https://images.unsplash.com/photo-1577803645773-f96470509666?auto=format&fit=crop&q=80&w=800",
-        "https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&fit=crop&q=80&w=800"
-      ],
-      "description": "فریم طبی بسیار شیک گربه‌ای مدرن با دسته مجهز به لولای فنری اروپایی. مناسب برای نمره چشم و کار با کامپیوتر و گوشی.",
-      "features": [
-        "فریم استات سبک",
-        "لولای فنری انعطاف‌پذیر",
-        "طراحی ارگونومیک صورت",
-        "مناسب تمام فرم‌های صورت"
-      ],
-      "stock": 3,
-      "isFeatured": true,
-      "createdAt": "2026-08-18T22:32:23.829Z"
-    },
-    {
-      "id": "demo-3",
-      "title": "عینک ورزشی و دوچرخه‌سواری مگنتی اسپرت",
-      "code": "STK-705",
-      "category": "sport",
-      "price": 2100000,
-      "frameType": "پلی‌کربنات نشکن TR90",
-      "lensColor": "جیوه‌ای چندرنگ (Rainbow)",
-      "uvProtection": "UV400 Shield",
-      "gender": "اسپرت (یونی‌سکس)",
-      "images": [
-        "https://images.unsplash.com/photo-1508296695146-257a814070b4?auto=format&fit=crop&q=80&w=800"
-      ],
-      "description": "عینک تخصصی ورزشی فوق‌العاده سبک با فریم TR90 مقاوم در برابر ضربه و عدسی وسیع ضدباد و گردوغبار.",
-      "features": [
-        "عدسی یکپارچه پانوورامیک",
-        "جلوگیری از خستگی چشم در آفتاب شدید",
-        "ضد لغزش هنگام تعریق"
-      ],
-      "stock": 8,
-      "isFeatured": false,
-      "createdAt": "2026-08-18T22:32:23.829Z"
-    },
-    {
-      "id": "prod-test-1787092748221",
-      "title": "عینک آفتابی کلاب‌مستر پولاریزه ایتالیا",
-      "code": "STK-CLUB-99",
-      "category": "sun",
-      "price": 3450000,
-      "frameType": "استیل ضدزنگ و استات",
-      "lensColor": "دودی یووی ۴۰۰ پولاریزه",
-      "uvProtection": "UV400 Polarized",
-      "gender": "مردانه / زنانه",
-      "images": [
-        "https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&q=80&w=800"
-      ],
-      "description": "مدل کلاسیک و محبوب کلاب‌مستر با دید شفاف و بدون انعکاس نور.",
-      "features": [
-        "عدسی ضدخش",
-        "لولاهای فنری نشکن",
-        "بسته‌بندی اورجینال"
-      ],
-      "stock": 5,
-      "isFeatured": true,
-      "createdAt": "2026-08-18T22:39:08.221Z"
-    }
-  ],
-  "orders": [
-    {
-      "id": "ORD-SIM-1787092748378",
-      "orderCode": "SJ-915156",
-      "customer": {
-        "fullName": "علی مرادی (تست سفارش موبایل)",
-        "phone": "09351112233",
-        "province": "تهران",
-        "city": "تهران",
-        "address": "خیابان ولیعصر، پلاک ۴۲، واحد ۳",
-        "postalCode": "1415512345",
-        "notes": "لطفاً عصر ارسال شود"
-      },
-      "items": [
-        {
-          "product": {
-            "id": "prod-test-1787092748221",
-            "title": "عینک آفتابی کلاب‌مستر پولاریزه ایتالیا",
-            "code": "STK-CLUB-99",
-            "category": "sun",
-            "price": 3450000,
-            "frameType": "استیل ضدزنگ و استات",
-            "lensColor": "دودی یووی ۴۰۰ پولاریزه",
-            "uvProtection": "UV400 Polarized",
-            "gender": "مردانه / زنانه",
-            "images": [
-              "https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&q=80&w=800"
-            ],
-            "description": "مدل کلاسیک و محبوب کلاب‌مستر با دید شفاف و بدون انعکاس نور.",
-            "features": [
-              "عدسی ضدخش",
-              "لولاهای فنری نشکن",
-              "بسته‌بندی اورجینال"
-            ],
-            "stock": 5,
-            "isFeatured": true,
-            "createdAt": "2026-08-18T22:39:08.221Z"
-          },
-          "quantity": 1,
-          "price": 3450000,
-          "selectedColor": "مشکی طلایی"
-        }
-      ],
-      "totalPrice": 3450000,
-      "paymentMethod": "card_to_card",
-      "paymentReceipt": "",
-      "status": "pending",
-      "createdAt": "2026-08-18T22:39:08.378Z",
-      "updatedAt": "2026-08-18T22:39:08.378Z"
-    }
-  ],
+  "products": [],
+  "orders": [],
   "settings": {
     "storeName": "stock_jahani",
     "tagline": "فروشگاه تخصصی عینک‌های آفتابی و طبی استوک اورجینال",
     "bannerMessage": "✨ ارسال با پست پیشتاز به سراسر کشور | تضمین سلامت فریم و عدسی",
     "welcomeText": "تجربه‌ای متفاوت از کیفیت و استایل با عینک استوک جهانی",
     "welcomeSubtext": "مجموعه کامل عینک‌های آفتابی و طبی اورجینال، فریم‌های استوک کائوچویی و فلزی ساخت اروپا با عدسی‌های پلاریزه و استاندارد کامل UV400.",
+    "heroTitle": "کالکشن جدید عینک‌های استوک و اورجینال اروپایی",
+    "heroSubtitle": "تضمین ۱۰۰٪ اصالت فریم و عدسی UV400، ارسال سریع و رایگان با پست پیشتاز به سراسر کشور",
+    "heroBadgeText": "✨ کالکشن جدید ۲۰۲۶ - کیفیت اورجینال",
+    "announcementText": "🚀 ارسال رایگان به سراسر کشور برای تمامی سفارش‌ها با بسته‌بندی هاردکیس ضدضربه",
+    "showAnnouncement": true,
+    "feature1Title": "ضمانت اصالت و سلامت",
+    "feature1Desc": "تمام عینک‌ها استوک دست‌چین اورجینال اروپایی هستند",
+    "feature2Title": "محافظت کامل UV400",
+    "feature2Desc": "عدسی‌های استاندارد و پلاریزه تست شده ضد اشعه",
+    "feature3Title": "ارسال سریع پیشتاز",
+    "feature3Desc": "تحویل با بسته‌بندی ایمن و کد پیگیری ۲۴ رقمی پست",
+    "feature4Title": "پشتیبانی اختصاصی",
+    "feature4Desc": "مشاوره آنلاین و پاسخگویی سریع در دایرکت و تلگرام",
     "noticeText": "💡 خریداران گرامی: پس از ثبت سفارش، کد ۲۴ رقمی رهگیری پستی به همراه وضعیت خریدهای شما در بخش «پیگیری سفارشات» قرار خواهد گرفت.",
     "aboutText": "فروشگاه عینک استوک جهانی عرضه کننده مستقیم جدیدترین فریم‌های طبی و آفتابی استوک اورجینال اروپا با بالاترین کیفیت و نازل‌ترین قیمت.",
     "rulesText": "تمامی بسته‌ها در هاردکیس مقاوم ضدضربه با پُست پیشتاز ارسال شده و کد رهگیری مرسوله پستی پس از ارسال در همین سایت نمایش داده می‌شود.",
+    "footerAboutText": "فروشگاه تخصصی stock_jahani واردکننده و ارائه‌دهنده فریم‌های باکیفیت و خاص با مناسب‌ترین قیمت.",
     "categories": [
       {
         "id": "sunglasses",
@@ -187,13 +52,10 @@
     "freeShippingThreshold": 0,
     "adminPasscode": "1383",
     "cardNumber": "6037-9975-1234-5678",
-    "cardHolderName": "بهنام جهانی"
+    "cardHolderName": "بهنام جهانی",
+    "ntfyEnabled": true,
+    "ntfyTopic": "stock_jahani_orders",
+    "ntfyServerUrl": "https://ntfy.sh"
   },
-  "deletedProductIds": [
-    "test-glass-1787092490915"
-  ],
-  "deletedOrderIds": [
-    "test-order-1787092490945"
-  ],
-  "dataVersion": 1787092748440
+  "dataVersion": 1787093000000
 }

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Product, Order, StoreSettings, OrderStatus, CategoryType, CategoryItem, CouponCode } from '../types';
-import { formatToman, fileToBase64, DEMO_PRODUCTS, exportBackupData, importBackupData, DEFAULT_CATEGORIES, DEFAULT_COUPONS, testTelegramNotification } from '../utils/storage';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Product, Order, StoreSettings, OrderStatus, CategoryType, CategoryItem, CouponCode, VisitorStats } from '../types';
+import { formatToman, fileToBase64, DEMO_PRODUCTS, exportBackupData, importBackupData, DEFAULT_CATEGORIES, DEFAULT_COUPONS, testTelegramNotification, resetAllStoreData, fetchVisitorStats, toPersianDigits } from '../utils/storage';
 import { 
   Plus, 
   Edit, 
@@ -36,7 +36,21 @@ import {
   ExternalLink,
   Tag,
   Percent,
-  Award
+  Award,
+  Bell,
+  Volume2,
+  AlertTriangle,
+  Users,
+  Activity,
+  Smartphone,
+  Laptop,
+  MousePointerClick,
+  Zap,
+  Radio,
+  Share2,
+  ChevronDown,
+  ChevronUp,
+  FileText
 } from 'lucide-react';
 
 import {
@@ -89,6 +103,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [visitorStats, setVisitorStats] = useState<VisitorStats | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+  const loadVisitorStats = async () => {
+    setIsLoadingStats(true);
+    try {
+      const stats = await fetchVisitorStats();
+      if (stats) setVisitorStats(stats);
+    } catch (e) {
+      console.warn('Failed to load visitor stats:', e);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
+  useEffect(() => {
+    loadVisitorStats();
+    if (activeTab === 'analytics') {
+      const interval = setInterval(loadVisitorStats, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -96,6 +132,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       if (onRefreshData) {
         await onRefreshData();
       }
+      await loadVisitorStats();
       onShowToast('اطلاعات و سفارشات جدید با موفقیت همگام‌سازی شدند');
     } catch (e) {
       onShowToast('خطا در به‌روزرسانی اطلاعات');
@@ -215,10 +252,61 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [formStock, setFormStock] = useState<number>(5);
   const [formImages, setFormImages] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [formSeoTitle, setFormSeoTitle] = useState('');
+  const [formSeoDescription, setFormSeoDescription] = useState('');
+  const [formSeoKeywords, setFormSeoKeywords] = useState('');
+  const [formOgImage, setFormOgImage] = useState('');
+  const [showSeoSectionInModal, setShowSeoSectionInModal] = useState(false);
 
   // Settings local state
   const [tempSettings, setTempSettings] = useState<StoreSettings>({ ...settings });
   const [copiedType, setCopiedType] = useState<'store' | 'admin' | null>(null);
+  const [isTestingNtfy, setIsTestingNtfy] = useState(false);
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
+  React.useEffect(() => {
+    setTempSettings((prev) => ({ ...prev, ...settings }));
+  }, [settings]);
+
+  const handleTestNtfy = async () => {
+    setIsTestingNtfy(true);
+    try {
+      const topic = tempSettings.ntfyTopic || 'stock_jahani_orders';
+      const serverUrl = tempSettings.ntfyServerUrl || 'https://ntfy.sh';
+      const res = await fetch('/api/test-ntfy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, serverUrl })
+      });
+      const data = await res.json();
+      if (data.success) {
+        onShowToast(`✅ پیام تست با موفقیت به تاپیک ${topic} در ntfy ارسال شد!`);
+      } else {
+        onShowToast(`خطا: ${data.error || 'ارسال نشد'}`);
+      }
+    } catch (err: any) {
+      onShowToast(`خطا در ارسال تست: ${err?.message || 'ناموفق'}`);
+    } finally {
+      setIsTestingNtfy(false);
+    }
+  };
+
+  const handleConfirmResetAll = async () => {
+    setIsResetting(true);
+    try {
+      await resetAllStoreData();
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+      setShowResetConfirmModal(false);
+      onShowToast('تمامی محصولات و سفارشات تستی با موفقیت کاملاً پاکسازی شدند.');
+    } catch (e) {
+      onShowToast('خطا در پاکسازی اطلاعات');
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
 
   // Coupon management state
@@ -346,6 +434,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setFormStock(3);
     setFormImages([]);
     setImageUrlInput('');
+    setFormSeoTitle('');
+    setFormSeoDescription('');
+    setFormSeoKeywords('');
+    setFormOgImage('');
+    setShowSeoSectionInModal(false);
     setIsModalOpen(true);
   };
 
@@ -366,6 +459,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setFormStock(prod.stock);
     setFormImages(prod.images || []);
     setImageUrlInput('');
+    setFormSeoTitle(prod.seoTitle || '');
+    setFormSeoDescription(prod.seoDescription || '');
+    setFormSeoKeywords(prod.seoKeywords || '');
+    setFormOgImage(prod.ogImage || (prod.images && prod.images[0]) || '');
+    setShowSeoSectionInModal(Boolean(prod.seoTitle || prod.seoDescription || prod.seoKeywords || prod.ogImage));
     setIsModalOpen(true);
   };
 
@@ -425,6 +523,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       description: formDescription,
       features: featureList,
       stock: Number(formStock),
+      seoTitle: formSeoTitle.trim() || undefined,
+      seoDescription: formSeoDescription.trim() || undefined,
+      seoKeywords: formSeoKeywords.trim() || undefined,
+      ogImage: formOgImage.trim() || (formImages.length > 0 ? formImages[0] : undefined),
       createdAt: editingProduct ? editingProduct.createdAt : new Date().toISOString(),
     };
 
@@ -1213,6 +1315,204 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               )}
             </div>
           </div>
+
+          {/* REAL-TIME VISITOR ANALYTICS & TRAFFIC INSIGHTS */}
+          <div className="bg-zinc-900 border border-emerald-500/30 p-6 rounded-2xl space-y-6 shadow-xl relative overflow-hidden">
+            {/* Background Glow */}
+            <div className="absolute -top-10 -left-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Header with Live Pulse */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-2xl border border-emerald-500/30 flex items-center justify-center relative">
+                  <Activity className="w-6 h-6 animate-pulse" />
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-white">آمار زنده بازدیدکنندگان سایت (Visitor Analytics)</h3>
+                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      آنلاین و زنده
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    رهگیری دقیق و آنی تعداد بازدیدها، افراد یکتا، دستگاه‌های متصل و کاربران حاضر در سایت
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadVisitorStats}
+                  disabled={isLoadingStats}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStats ? 'animate-spin text-emerald-400' : ''}`} />
+                  <span>به‌روزرسانی آمار</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Traffic Metrics Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {/* Active Online Now */}
+              <div className="bg-gradient-to-br from-emerald-950/40 to-zinc-950 border border-emerald-500/40 p-4 rounded-2xl space-y-2 relative overflow-hidden">
+                <div className="flex items-center justify-between text-xs text-emerald-400">
+                  <span className="font-bold flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+                    هم‌اکنون آنلاین در سایت
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                </div>
+                <div className="text-2xl font-black text-white font-mono flex items-baseline gap-1.5">
+                  <span>{toPersianDigits(visitorStats?.activeOnline || 1)}</span>
+                  <span className="text-xs font-normal text-emerald-300">نفر حاضر</span>
+                </div>
+                <span className="text-[10px] text-emerald-500/80 block">کاربران فعال در ۳ دقیقه اخیر</span>
+              </div>
+
+              {/* Today Views */}
+              <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span className="font-medium flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5 text-amber-400" />
+                    بازدیدهای امروز
+                  </span>
+                  <span className="text-[10px] text-amber-400/80 bg-amber-400/10 px-1.5 py-0.5 rounded">امروز</span>
+                </div>
+                <div className="text-2xl font-black text-amber-400 font-mono flex items-baseline gap-1.5">
+                  <span>{toPersianDigits(visitorStats?.todayViews || 0)}</span>
+                  <span className="text-xs font-normal text-zinc-400">صفحه</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 block">
+                  {toPersianDigits(visitorStats?.todayUnique || 0)} کاربر یکتای امروز
+                </span>
+              </div>
+
+              {/* Unique Visitors */}
+              <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span className="font-medium flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-cyan-400" />
+                    کل بازدیدکنندگان یکتا
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-cyan-400 font-mono flex items-baseline gap-1.5">
+                  <span>{toPersianDigits(visitorStats?.uniqueVisitors || 0)}</span>
+                  <span className="text-xs font-normal text-zinc-400">نفر</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 block">تعداد افراد منحصر‌به‌فرد</span>
+              </div>
+
+              {/* Total Lifetime Pageviews */}
+              <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span className="font-medium flex items-center gap-1.5">
+                    <MousePointerClick className="w-3.5 h-3.5 text-violet-400" />
+                    کل بازدیدهای تاریخچه
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-violet-400 font-mono flex items-baseline gap-1.5">
+                  <span>{toPersianDigits(visitorStats?.totalViews || 0)}</span>
+                  <span className="text-xs font-normal text-zinc-400">بار</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 block">مجموع باز شدن صفحات فروشگاه</span>
+              </div>
+            </div>
+
+            {/* Daily Traffic Chart */}
+            {visitorStats?.dailyStats && visitorStats.dailyStats.length > 0 ? (
+              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    <span>نمودار روند بازدیدهای روزانه اخیر</span>
+                  </h4>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="flex items-center gap-1 text-amber-400">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                      تعداد بازدیدها
+                    </span>
+                    <span className="flex items-center gap-1 text-emerald-400">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                      کاربران یکتا
+                    </span>
+                  </div>
+                </div>
+
+                <div className="h-52 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={visitorStats.dailyStats} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                      <XAxis dataKey="date" stroke="#a1a1aa" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#a1a1aa" fontSize={11} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#18181b',
+                          borderColor: '#3f3f46',
+                          borderRadius: '12px',
+                          color: '#fff',
+                          fontSize: '12px',
+                          textAlign: 'right',
+                        }}
+                        formatter={(val: any, name: any) => [
+                          `${toPersianDigits(val)}`,
+                          name === 'views' ? 'تعداد کل بازدید' : 'کاربران یکتا',
+                        ]}
+                      />
+                      <Bar dataKey="views" name="views" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="visitors" name="visitors" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-center py-6 text-xs text-zinc-500">
+                <span>هنوز اطلاعات روزانه کافی ثبت نشده است. با ورود بازدیدکنندگان جدید، نمودار به صورت زنده و خودکار تکمیل می‌شود.</span>
+              </div>
+            )}
+
+            {/* Recent Live Visits Stream */}
+            {visitorStats?.recentVisits && visitorStats.recentVisits.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>گزارش آخرین بازدیدهای ثبت‌شده کاربران:</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {visitorStats.recentVisits.slice(0, 6).map((visit, idx) => (
+                    <div
+                      key={visit.id || idx}
+                      className="bg-zinc-950/80 border border-zinc-800/80 p-3 rounded-xl flex items-center justify-between text-xs hover:border-zinc-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-zinc-900 rounded-lg text-zinc-400">
+                          {visit.device === 'mobile' ? (
+                            <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+                          ) : (
+                            <Laptop className="w-3.5 h-3.5 text-cyan-400" />
+                          )}
+                        </div>
+                        <div>
+                          <span className="font-bold text-zinc-200 block text-[11px]">
+                            {visit.page === '/' ? 'صفحه اصلی فروشگاه' : visit.page}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 block">
+                            دستگاه: {visit.device === 'mobile' ? 'گوشی موبایل' : 'رایانه / دسکتاپ'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 font-mono dir-ltr">
+                        {new Date(visit.timestamp).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1379,40 +1679,131 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
             <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
               <Sparkles className="w-4 h-4" />
-              <span>ویرایش متن‌های بنر اصلی و اعلان بالای فروشگاه</span>
+              <span>ویرایش تمام متن‌های بنر اصلی، هدر و اعلان فروشگاه</span>
             </h4>
 
-            <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">متن نوار متحرک بالای سایت (Announcement Bar)</label>
-              <input
-                type="text"
-                value={tempSettings.bannerMessage || ''}
-                onChange={(e) => setTempSettings({ ...tempSettings, bannerMessage: e.target.value })}
-                placeholder="✨ ارسال با پست پیشتاز به سراسر کشور..."
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">متن بج طلایی بالای هدر (Hero Badge)</label>
+                <input
+                  type="text"
+                  value={tempSettings.heroBadgeText || ''}
+                  onChange={(e) => setTempSettings({ ...tempSettings, heroBadgeText: e.target.value })}
+                  placeholder="✨ کالکشن جدید ۲۰۲۶ - کیفیت اورجینال"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-amber-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">متن نوار متحرک اعلان بالای سایت (Announcement Bar)</label>
+                <input
+                  type="text"
+                  value={tempSettings.announcementText || tempSettings.bannerMessage || ''}
+                  onChange={(e) => setTempSettings({ ...tempSettings, announcementText: e.target.value, bannerMessage: e.target.value })}
+                  placeholder="🚀 ارسال رایگان به سراسر کشور برای تمامی سفارش‌ها..."
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">تیتر بزرگ بنر اصلی صفحه اول (Welcome Headline)</label>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">تیتر اصلی هدر صفحه اول (Hero Title)</label>
               <input
                 type="text"
-                value={tempSettings.welcomeText || ''}
-                onChange={(e) => setTempSettings({ ...tempSettings, welcomeText: e.target.value })}
-                placeholder="تجربه‌ای متفاوت از کیفیت و استایل با عینک استوک جهانی"
+                value={tempSettings.heroTitle || tempSettings.welcomeText || ''}
+                onChange={(e) => setTempSettings({ ...tempSettings, heroTitle: e.target.value, welcomeText: e.target.value })}
+                placeholder="کالکشن جدید عینک‌های استوک و اورجینال اروپایی"
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white font-bold"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">توضیحات زیر تیتر اصلی (Welcome Subtext)</label>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">زیرعنوان و توضیحات هدر (Hero Subtitle)</label>
               <textarea
                 rows={2}
-                value={tempSettings.welcomeSubtext || ''}
-                onChange={(e) => setTempSettings({ ...tempSettings, welcomeSubtext: e.target.value })}
-                placeholder="مجموعه کامل عینک‌های آفتابی و طبی اورجینال..."
+                value={tempSettings.heroSubtitle || tempSettings.welcomeSubtext || ''}
+                onChange={(e) => setTempSettings({ ...tempSettings, heroSubtitle: e.target.value, welcomeSubtext: e.target.value })}
+                placeholder="تضمین ۱۰۰٪ اصالت فریم و عدسی UV400، ارسال سریع و رایگان با پست پیشتاز..."
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white"
               />
+            </div>
+
+            {/* 4 Features Customization */}
+            <div className="border-t border-zinc-800 pt-3 space-y-3">
+              <span className="text-xs font-bold text-zinc-300 block">ویرایش متن‌های ۴ کارت ویژگی و مزیت خرید:</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800 space-y-1.5">
+                  <span className="text-[11px] font-bold text-amber-400">کارت ویژگی ۱</span>
+                  <input
+                    type="text"
+                    value={tempSettings.feature1Title || 'ضمانت اصالت و سلامت'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature1Title: e.target.value })}
+                    placeholder="عنوان ویژگی ۱"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white"
+                  />
+                  <input
+                    type="text"
+                    value={tempSettings.feature1Desc || 'تمام عینک‌ها استوک دست‌چین اورجینال اروپایی هستند'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature1Desc: e.target.value })}
+                    placeholder="توضیح ویژگی ۱"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-400"
+                  />
+                </div>
+
+                <div className="bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800 space-y-1.5">
+                  <span className="text-[11px] font-bold text-amber-400">کارت ویژگی ۲</span>
+                  <input
+                    type="text"
+                    value={tempSettings.feature2Title || 'محافظت کامل UV400'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature2Title: e.target.value })}
+                    placeholder="عنوان ویژگی ۲"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white"
+                  />
+                  <input
+                    type="text"
+                    value={tempSettings.feature2Desc || 'عدسی‌های استاندارد و پلاریزه تست شده ضد اشعه'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature2Desc: e.target.value })}
+                    placeholder="توضیح ویژگی ۲"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-400"
+                  />
+                </div>
+
+                <div className="bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800 space-y-1.5">
+                  <span className="text-[11px] font-bold text-amber-400">کارت ویژگی ۳</span>
+                  <input
+                    type="text"
+                    value={tempSettings.feature3Title || 'ارسال سریع پیشتاز'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature3Title: e.target.value })}
+                    placeholder="عنوان ویژگی ۳"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white"
+                  />
+                  <input
+                    type="text"
+                    value={tempSettings.feature3Desc || 'تحویل با بسته‌بندی ایمن و کد پیگیری ۲۴ رقمی پست'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature3Desc: e.target.value })}
+                    placeholder="توضیح ویژگی ۳"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-400"
+                  />
+                </div>
+
+                <div className="bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800 space-y-1.5">
+                  <span className="text-[11px] font-bold text-amber-400">کارت ویژگی ۴</span>
+                  <input
+                    type="text"
+                    value={tempSettings.feature4Title || 'پشتیبانی اختصاصی'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature4Title: e.target.value })}
+                    placeholder="عنوان ویژگی ۴"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-white"
+                  />
+                  <input
+                    type="text"
+                    value={tempSettings.feature4Desc || 'مشاوره آنلاین و پاسخگویی سریع در دایرکت و تلگرام'}
+                    onChange={(e) => setTempSettings({ ...tempSettings, feature4Desc: e.target.value })}
+                    placeholder="توضیح ویژگی ۴"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-[11px] text-zinc-400"
+                  />
+                </div>
+              </div>
             </div>
 
             <div>
@@ -1427,12 +1818,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">متن درباره فروشگاه (aboutText) / فوتر</label>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">متن درباره فروشگاه در فوتر و صفحه</label>
               <textarea
                 rows={2}
-                value={tempSettings.aboutText || ''}
-                onChange={(e) => setTempSettings({ ...tempSettings, aboutText: e.target.value })}
-                placeholder="فروشگاه عینک استوک جهانی عرضه کننده مستقیم..."
+                value={tempSettings.footerAboutText || tempSettings.aboutText || ''}
+                onChange={(e) => setTempSettings({ ...tempSettings, footerAboutText: e.target.value, aboutText: e.target.value })}
+                placeholder="فروشگاه تخصصی stock_jahani واردکننده و ارائه‌دهنده فریم‌های باکیفیت و خاص..."
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white"
               />
             </div>
@@ -1548,6 +1939,109 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* NTFY Push Notifications Section (Works without VPN in Iran) */}
+          <div className="bg-zinc-950 border border-emerald-500/40 rounded-2xl p-4 space-y-3.5 relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Bell className="w-4 h-4 animate-bounce" />
+                  </div>
+                  <h4 className="text-xs font-bold text-emerald-400">
+                    نوتیفیکیشن لحظه‌ای ntfy (بدون نیاز به فیلترشکن - ۱۰۰٪ تضمینی روی گوشی)
+                  </h4>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  سفارشات جدید و فیش‌های واریزی بدون قطعی و با زنگ هشدار روی گوشی شما اعلان می‌شوند.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-xs text-zinc-400">وضعیت ارسال:</span>
+                <button
+                  type="button"
+                  onClick={() => setTempSettings({ ...tempSettings, ntfyEnabled: !(tempSettings.ntfyEnabled !== false) })}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                    tempSettings.ntfyEnabled !== false
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
+                      : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                  }`}
+                >
+                  {tempSettings.ntfyEnabled !== false ? '✅ فعال و متصل' : '❌ غیرفعال'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  نام تاپیک اختصاصی شما در ntfy (Topic Name)
+                </label>
+                <input
+                  type="text"
+                  value={tempSettings.ntfyTopic || 'stock_jahani_orders'}
+                  onChange={(e) => setTempSettings({ ...tempSettings, ntfyTopic: e.target.value.trim() })}
+                  placeholder="stock_jahani_orders"
+                  className="w-full bg-zinc-900 border border-emerald-500/40 rounded-xl px-3.5 py-2 text-xs text-emerald-300 font-mono dir-ltr text-right focus:outline-none focus:border-emerald-400"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  این نام را در اپلیکیشن ntfy گوشی سابسکرایب (Subscribe) کنید.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  آدرس سرور ntfy (Server URL)
+                </label>
+                <input
+                  type="text"
+                  value={tempSettings.ntfyServerUrl || 'https://ntfy.sh'}
+                  onChange={(e) => setTempSettings({ ...tempSettings, ntfyServerUrl: e.target.value.trim() })}
+                  placeholder="https://ntfy.sh"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-300 font-mono dir-ltr text-right focus:outline-none"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  سرور رایگان و جهانی پیش‌فرض: https://ntfy.sh
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Setup Instructions & Test Button */}
+            <div className="bg-zinc-900/80 p-3 rounded-xl border border-zinc-800 space-y-2">
+              <span className="text-[11px] font-bold text-amber-400 block">📱 نحوه فعال‌سازی نوتیفیکیشن روی گوشی (۲ مرحله بسیار ساده):</span>
+              <ol className="text-[11px] text-zinc-300 space-y-1 list-decimal list-inside pr-1 leading-relaxed">
+                <li>
+                  برنامه <strong>ntfy</strong> را از گوگل‌پلی (Google Play)، بازار، یا اپ‌استور (App Store) برای گوشی دانلود کنید.
+                </li>
+                <li>
+                  در برنامه ntfy علامت <span className="text-emerald-400 font-bold">+</span> را زده و نام تاپیک <code className="text-amber-300 font-mono font-bold bg-zinc-950 px-1.5 py-0.5 rounded">{tempSettings.ntfyTopic || 'stock_jahani_orders'}</code> را وارد کنید. تمام شد!
+                </li>
+              </ol>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/80">
+                <a
+                  href={`https://ntfy.sh/${encodeURIComponent(tempSettings.ntfyTopic || 'stock_jahani_orders')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 hover:underline"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>مشاهده پیام‌ها در مرورگر بدون نصب برنامه</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleTestNtfy}
+                  disabled={isTestingNtfy}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  <span>{isTestingNtfy ? 'در حال ارسال تست...' : '⚡ تست ارسال اعلان به گوشی'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1856,6 +2350,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
+          {/* DANGER ZONE: RESET ALL STORE DATA */}
+          <div className="bg-rose-950/30 border border-rose-500/40 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-2 text-rose-400">
+              <AlertTriangle className="w-5 h-5" />
+              <h4 className="text-xs font-bold">بخش حساس: پاکسازی کامل محصولات و سفارشات (Reset All)</h4>
+            </div>
+            <p className="text-[11px] text-zinc-300 leading-relaxed">
+              با زدن دکمه زیر تمامی محصولات تستی و سفارشات ثبت شده از حافظه برنامه، فایل‌های سرور و پایگاه داده به صورت کامل و یکجا پاک می‌شوند تا فروشگاه با دیتای کاملاً تمیز و واقعی شروع شود.
+            </p>
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowResetConfirmModal(true)}
+                className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors shadow-md active:scale-95"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>پاکسازی کامل همه محصولات و سفارشات تستی</span>
+              </button>
+            </div>
+          </div>
+
           <button
             onClick={() => {
               onSaveSettings(tempSettings);
@@ -2125,6 +2640,196 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
+            {/* Section 5: Open Graph & Social Media Sharing (Telegram / WhatsApp / Instagram) */}
+            <div className="bg-zinc-950/80 border border-zinc-800 p-4 rounded-xl space-y-4 lg:col-span-2">
+              <h4 className="text-sm font-bold text-amber-400 flex items-center justify-between border-b border-zinc-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <Share2 className="w-4 h-4 text-blue-400" />
+                  <span>تنظیمات پیش‌نمایش در شبکه‌های اجتماعی (Open Graph Social Cards)</span>
+                </div>
+                <span className="text-[10px] text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                  سازگار با تلگرام، واتساپ، اینستاگرام، فیس‌بوک و لینکدین
+                </span>
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">عنوان عمومی اشتراک (OG Title)</label>
+                    <input
+                      type="text"
+                      value={tempSettings.ogTitle || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, ogTitle: e.target.value })}
+                      placeholder={tempSettings.seoTitle || tempSettings.storeName || 'فروشگاه عینک استوک جهانی'}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">توضیحات پیش‌نمایش لینک (OG Description)</label>
+                    <textarea
+                      rows={3}
+                      value={tempSettings.ogDescription || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, ogDescription: e.target.value })}
+                      placeholder={tempSettings.seoDescription || tempSettings.tagline || 'توضیحات کوتاه و جذاب هنگام ارسال لینک فروشگاه در چت‌ها...'}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">لینک مستقیم تصویر شاخص شبکه‌های اجتماعی (OG Image URL)</label>
+                    <input
+                      type="url"
+                      value={tempSettings.ogImage || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, ogImage: e.target.value })}
+                      placeholder="https://.../banner.jpg"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Social Card Simulator */}
+                <div className="bg-zinc-900/90 p-4 rounded-xl border border-zinc-800 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-zinc-300 block mb-2">
+                      شبیه‌ساز کارت لینک در تلگرام و اینستاگرام:
+                    </span>
+                    <div className="bg-zinc-950 rounded-xl border border-zinc-800 overflow-hidden shadow-xl">
+                      {(tempSettings.ogImage || (tempSettings as any).heroBanner) && (
+                        <div className="aspect-[16/9] w-full bg-zinc-900 overflow-hidden">
+                          <img
+                            src={tempSettings.ogImage || (tempSettings as any).heroBanner}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      <div className="p-3 text-right space-y-1">
+                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-mono">
+                          {window.location.hostname}
+                        </span>
+                        <h5 className="text-xs font-bold text-white">
+                          {tempSettings.ogTitle || tempSettings.seoTitle || tempSettings.storeName || 'عینک استوک جهانی'}
+                        </h5>
+                        <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed">
+                          {tempSettings.ogDescription || tempSettings.seoDescription || tempSettings.tagline || 'فروشگاه آنلاین عینک‌های استوک اورجینال آفتابی و طبی'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-zinc-800/80 text-[10px] text-zinc-400">
+                    نکته: هر عینک نیز می‌تواند در بخش ویرایش محصول، عکس و متاتگ‌های پیش‌نمایش اختصاصی خود را داشته باشد.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 6: Individual Product SEO Manager & Inspector */}
+            <div className="bg-zinc-950/80 border border-zinc-800 p-4 rounded-xl space-y-4 lg:col-span-2">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-emerald-400" />
+                    <span>میز کار سئوی تک‌تک عینک‌ها ({products.length} عینک در ویترین)</span>
+                  </h4>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    بررسی وضعیت عنوان سئو، توضیحات متا و پیش‌نمایش شبکه‌های اجتماعی برای هر محصول به صورت مجزا
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-zinc-900/80 text-zinc-400 border-b border-zinc-800">
+                    <tr>
+                      <th className="p-2.5">عکس عینک</th>
+                      <th className="p-2.5">عنوان و کد</th>
+                      <th className="p-2.5">عنوان سئو گوگل</th>
+                      <th className="p-2.5">توضیحات متای گوگل</th>
+                      <th className="p-2.5">وضعیت سئو</th>
+                      <th className="p-2.5 text-center">عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/60">
+                    {products.map((p) => {
+                      const hasCustomSeo = Boolean(p.seoTitle || p.seoDescription);
+                      const hasSeoTitle = Boolean(p.seoTitle);
+                      const hasSeoDesc = Boolean(p.seoDescription);
+                      const firstImg = p.images && p.images[0];
+
+                      return (
+                        <tr key={p.id} className="hover:bg-zinc-900/40 transition-colors">
+                          <td className="p-2.5">
+                            <div className="w-10 h-10 rounded-lg bg-zinc-900 overflow-hidden border border-zinc-800">
+                              {firstImg ? (
+                                <img src={firstImg} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                                  <Glasses className="w-4 h-4" />
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-2.5">
+                            <span className="font-bold text-white block">{p.title}</span>
+                            <span className="text-[10px] text-zinc-400 font-mono">{p.code || 'STK'}</span>
+                          </td>
+                          <td className="p-2.5 max-w-[200px]">
+                            {hasSeoTitle ? (
+                              <span className="text-zinc-200 truncate block font-medium" title={p.seoTitle}>
+                                {p.seoTitle}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-500 italic block">
+                                خودکار: {p.title} | {settings.storeName}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 max-w-[240px]">
+                            {hasSeoDesc ? (
+                              <span className="text-zinc-300 line-clamp-1" title={p.seoDescription}>
+                                {p.seoDescription}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-500 italic line-clamp-1">
+                                خودکار: {p.description ? p.description.slice(0, 50) + '...' : 'توضیحات پیش‌فرض'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5">
+                            {hasCustomSeo ? (
+                              <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                                <Check className="w-3 h-3" />
+                                <span>سئو اختصاصی</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full text-[10px]">
+                                <span>پیش‌فرض هوشمند</span>
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleOpenEditModal(p);
+                                setShowSeoSectionInModal(true);
+                              }}
+                              className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>تنظیم سئو</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
 
           <button
@@ -2337,6 +3042,191 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   )}
                 </div>
 
+                {/* Collapsible SEO & Open Graph Social Previews Section */}
+                <div className="border border-zinc-800 bg-zinc-950/70 rounded-xl overflow-hidden shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setShowSeoSectionInModal(!showSeoSectionInModal)}
+                    className="w-full p-3.5 bg-zinc-900/90 hover:bg-zinc-900 flex items-center justify-between text-xs font-bold text-amber-400 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div className="text-right">
+                        <span className="block text-white font-bold text-xs">تنظیمات سئو و پیش‌نمایش در گوگل و شبکه‌های اجتماعی (SEO & Open Graph)</span>
+                        <span className="text-[10px] text-zinc-400 font-normal">عنوان، توضیحات متا، کلمات کلیدی و پیش‌نمایش تلگرام/اینستاگرام این عینک</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-md">
+                        {showSeoSectionInModal ? 'بستن' : (formSeoTitle || formSeoDescription ? 'تنظیم شده ✓' : 'تنظیم')}
+                      </span>
+                      {showSeoSectionInModal ? <ChevronUp className="w-4 h-4 text-zinc-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
+                    </div>
+                  </button>
+
+                  {showSeoSectionInModal && (
+                    <div className="p-4 space-y-4 border-t border-zinc-800 bg-zinc-950 text-right">
+                      {/* SEO Title */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium text-zinc-300">
+                            عنوان متای سئو برای گوگل (SEO Meta Title)
+                          </label>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                            (formSeoTitle || formTitle).length >= 30 && (formSeoTitle || formTitle).length <= 65
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-zinc-800 text-zinc-400'
+                          }`}>
+                            {(formSeoTitle || formTitle).length} کاراکتر (طول بهینه: ۴۰ تا ۶۰)
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          value={formSeoTitle}
+                          onChange={(e) => setFormSeoTitle(e.target.value)}
+                          placeholder={formTitle ? `${formTitle} | عینک استوک اورجینال` : 'مثال: خرید عینک آفتابی ری‌بن اورجینال استوک جهانی'}
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                        <span className="text-[10px] text-zinc-500 block mt-1">
+                          اگر خالی بگذارید، به طور پیش‌فرض از عنوان محصول و نام فروشگاه استفاده می‌شود.
+                        </span>
+                      </div>
+
+                      {/* SEO Description */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium text-zinc-300">
+                            توضیحات متای گوگل (Meta Description)
+                          </label>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                            (formSeoDescription || formDescription).length >= 100 && (formSeoDescription || formDescription).length <= 165
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-zinc-800 text-zinc-400'
+                          }`}>
+                            {(formSeoDescription || formDescription).length} کاراکتر (طول بهینه: ۱۲۰ تا ۱۶۰)
+                          </span>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={formSeoDescription}
+                          onChange={(e) => setFormSeoDescription(e.target.value)}
+                          placeholder={formDescription || 'توضیحات جذاب و خلاصه برای جذب خریداران در نتایج موتورهای جستجو...'}
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      {/* SEO Keywords */}
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-300 mb-1">
+                          کلمات کلیدی اختصاصی عینک (Keywords)
+                        </label>
+                        <input
+                          type="text"
+                          value={formSeoKeywords}
+                          onChange={(e) => setFormSeoKeywords(e.target.value)}
+                          placeholder="عینک استوک, ری بن خلبانی, عینک دودی uv400, خرید عینک اصل"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      {/* Open Graph Image Selection */}
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                          تصویر پیش‌نمایش در شبکه‌های اجتماعی (Social Share / Open Graph Image)
+                        </label>
+                        {formImages.length > 0 ? (
+                          <div className="space-y-2">
+                            <span className="text-[10px] text-zinc-400 block">انتخاب از میان عکس‌های آپلود شده:</span>
+                            <div className="flex flex-wrap gap-2">
+                              {formImages.map((img, idx) => (
+                                <button
+                                  type="button"
+                                  key={idx}
+                                  onClick={() => setFormOgImage(img)}
+                                  className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                                    (formOgImage === img || (!formOgImage && idx === 0))
+                                      ? 'border-amber-500 shadow-md shadow-amber-500/30'
+                                      : 'border-zinc-800 opacity-60 hover:opacity-100'
+                                  }`}
+                                >
+                                  <img src={img} alt="" className="w-full h-full object-cover" />
+                                  {(formOgImage === img || (!formOgImage && idx === 0)) && (
+                                    <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
+                                      <Check className="w-4 h-4 text-amber-400 drop-shadow" />
+                                    </div>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <input
+                            type="url"
+                            value={formOgImage}
+                            onChange={(e) => setFormOgImage(e.target.value)}
+                            placeholder="لینک مستقیم تصویر برای اشتراک در تلگرام/اینستا..."
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono dir-ltr text-right"
+                          />
+                        )}
+                      </div>
+
+                      {/* Live Previews Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                        {/* 1. Live Google Search Snippet */}
+                        <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] font-bold border-b border-zinc-800/80 pb-1.5">
+                            <Search className="w-3.5 h-3.5 text-amber-400" />
+                            <span>پیش‌نمایش در گوگل (Google Snippet)</span>
+                          </div>
+                          <div className="font-sans text-right dir-rtl space-y-0.5 pt-1">
+                            <div className="text-[11px] text-emerald-400 font-mono dir-ltr text-right truncate">
+                              {window.location.origin}/?product={formCode || 'STK'}
+                            </div>
+                            <div className="text-xs font-bold text-blue-400 hover:underline cursor-pointer truncate">
+                              {formSeoTitle || `${formTitle || 'عینک استوک اورجینال'} | ${tempSettings.storeName || 'عینک استوک جهانی'}`}
+                            </div>
+                            <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed">
+                              {formSeoDescription || formDescription || `خرید ${formTitle || 'عینک'} با فریم ${formFrameType} و عدسی ${formLensColor} و ضمانت اصالت فیزیکی.`}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 2. Live Social Media Share Card (Telegram & Instagram) */}
+                        <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] font-bold border-b border-zinc-800/80 pb-1.5">
+                            <Share2 className="w-3.5 h-3.5 text-blue-400" />
+                            <span>پیش‌نمایش تلگرام و اینستاگرام (Open Graph)</span>
+                          </div>
+                          <div className="bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden flex flex-col">
+                            {(formOgImage || formImages[0]) && (
+                              <div className="aspect-[16/9] w-full bg-zinc-900 overflow-hidden">
+                                <img
+                                  src={formOgImage || formImages[0]}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+                            <div className="p-2.5 text-right space-y-1">
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-mono">
+                                {window.location.hostname}
+                              </span>
+                              <h5 className="text-xs font-bold text-white truncate">
+                                {formSeoTitle || formTitle || 'عینک استوک جهانی'}
+                              </h5>
+                              <p className="text-[10px] text-zinc-400 line-clamp-2 leading-snug">
+                                {formSeoDescription || formDescription || 'مشاهده مشخصات کامل، قیمت و ثبت سفارش آنلاین با ارسال سریع.'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit"
                   className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-3 rounded-xl text-xs shadow-lg transition-colors"
@@ -2385,6 +3275,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               >
                 بستن پنجره
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CONFIRMATION MODAL FOR FACTORY RESET */}
+      <AnimatePresence>
+        {showResetConfirmModal && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-rose-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3 text-rose-400">
+                <div className="p-3 bg-rose-500/20 rounded-xl border border-rose-500/30">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">تأیید پاکسازی کامل دیتای تستی</h3>
+                  <p className="text-[11px] text-rose-300 mt-0.5">این عملیات غیرقابل بازگشت است!</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+                آیا مطمئن هستید که می‌خواهید <span className="text-rose-400 font-bold">تمام محصولات</span> و <span className="text-rose-400 font-bold">تمام سفارشات ثبت شده</span> را از حافظه لوکال، سرور، و پایگاه داده به صورت کامل پاک کنید؟
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirmModal(false)}
+                  disabled={isResetting}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmResetAll}
+                  disabled={isResetting}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg active:scale-95 disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isResetting ? 'در حال پاکسازی...' : 'بله، همه را کاملاً پاک کن'}</span>
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

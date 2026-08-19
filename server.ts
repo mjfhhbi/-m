@@ -30,9 +30,23 @@ const DEFAULT_SETTINGS = {
   bannerMessage: "✨ ارسال با پست پیشتاز به سراسر کشور | تضمین سلامت فریم و عدسی",
   welcomeText: "تجربه‌ای متفاوت از کیفیت و استایل با عینک استوک جهانی",
   welcomeSubtext: "مجموعه کامل عینک‌های آفتابی و طبی اورجینال، فریم‌های استوک کائوچویی و فلزی ساخت اروپا با عدسی‌های پلاریزه و استاندارد کامل UV400.",
+  heroTitle: "کالکشن جدید عینک‌های استوک و اورجینال اروپایی",
+  heroSubtitle: "تضمین ۱۰۰٪ اصالت فریم و عدسی UV400، ارسال سریع و رایگان با پست پیشتاز به سراسر کشور",
+  heroBadgeText: "✨ کالکشن جدید ۲۰۲۶ - کیفیت اورجینال",
+  announcementText: "🚀 ارسال رایگان به سراسر کشور برای تمامی سفارش‌ها با بسته‌بندی هاردکیس ضدضربه",
+  showAnnouncement: true,
+  feature1Title: "ضمانت اصالت و سلامت",
+  feature1Desc: "تمام عینک‌ها استوک دست‌چین اورجینال اروپایی هستند",
+  feature2Title: "محافظت کامل UV400",
+  feature2Desc: "عدسی‌های استاندارد و پلاریزه تست شده ضد اشعه",
+  feature3Title: "ارسال سریع پیشتاز",
+  feature3Desc: "تحویل با بسته‌بندی ایمن و کد پیگیری ۲۴ رقمی پست",
+  feature4Title: "پشتیبانی اختصاصی",
+  feature4Desc: "مشاوره آنلاین و پاسخگویی سریع در دایرکت و تلگرام",
   noticeText: "💡 خریداران گرامی: پس از ثبت سفارش، کد ۲۴ رقمی رهگیری پستی به همراه وضعیت خریدهای شما در بخش «پیگیری سفارشات» قرار خواهد گرفت.",
   aboutText: "فروشگاه عینک استوک جهانی عرضه کننده مستقیم جدیدترین فریم‌های طبی و آفتابی استوک اورجینال اروپا با بالاترین کیفیت و نازل‌ترین قیمت.",
   rulesText: "تمامی بسته‌ها در هاردکیس مقاوم ضدضربه با پُست پیشتاز ارسال شده و کد رهگیری مرسوله پستی پس از ارسال در همین سایت نمایش داده می‌شود.",
+  footerAboutText: "فروشگاه تخصصی stock_jahani واردکننده و ارائه‌دهنده فریم‌های باکیفیت و خاص با مناسب‌ترین قیمت.",
   categories: [
     { id: 'sunglasses', label: 'عینک آفتابی' },
     { id: 'optical', label: 'عینک طبی' },
@@ -46,72 +60,13 @@ const DEFAULT_SETTINGS = {
   freeShippingThreshold: 0,
   adminPasscode: "1383",
   cardNumber: "6037-9975-1234-5678",
-  cardHolderName: "بهنام جهانی"
+  cardHolderName: "بهنام جهانی",
+  ntfyEnabled: true,
+  ntfyTopic: "stock_jahani_orders",
+  ntfyServerUrl: "https://ntfy.sh"
 };
 
-const DEFAULT_PRODUCTS = [
-  {
-    id: 'demo-1',
-    title: 'عینک آفتابی فریم خلبانی استوک اروپایی',
-    code: 'STK-901',
-    category: 'sunglasses',
-    price: 1850000,
-    originalPrice: 2400000,
-    frameType: 'فلزی استیل ضدزنگ',
-    lensColor: 'دودی هایلایت (Graded Green)',
-    uvProtection: 'UV400 + Polarized',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&q=80&w=800',
-      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&q=80&w=800'
-    ],
-    description: 'عینک آفتابی خلبانی کلاسیک با کیفیت ساخت درجه یک اروپایی، دارای لنز پلاریزه با وضوح دید فوق‌العاده و محافظت ۱۰۰٪ در برابر اشعه‌های مضر UV. بسیار سبک و مناسب استفاده طولانی‌مدت و رانندگی.',
-    features: ['عدسی پلاریزه واقعی', 'پد بینی سیلیکونی نرم', 'همراه با هارد کیس و دستمال نانو میکروفایبر', 'سبک و مقاوم'],
-    stock: 5,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'demo-2',
-    title: 'عینک طبی کائوچویی فریم گربه‌ای تام فورد',
-    code: 'STK-408',
-    category: 'optical',
-    price: 1650000,
-    originalPrice: 1950000,
-    frameType: 'کائوچو استات درجه یک',
-    lensColor: 'شفاف بلوکات (BlueCut)',
-    uvProtection: 'UV400 + Anti-Reflective',
-    gender: 'زنانه',
-    images: [
-      'https://images.unsplash.com/photo-1577803645773-f96470509666?auto=format&fit=crop&q=80&w=800',
-      'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&fit=crop&q=80&w=800'
-    ],
-    description: 'فریم طبی بسیار شیک گربه‌ای مدرن با دسته مجهز به لولای فنری اروپایی. مناسب برای نمره چشم و کار با کامپیوتر و گوشی.',
-    features: ['فریم استات سبک', 'لولای فنری انعطاف‌پذیر', 'طراحی ارگونومیک صورت', 'مناسب تمام فرم‌های صورت'],
-    stock: 3,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'demo-3',
-    title: 'عینک ورزشی و دوچرخه‌سواری مگنتی اسپرت',
-    code: 'STK-705',
-    category: 'sport',
-    price: 2100000,
-    frameType: 'پلی‌کربنات نشکن TR90',
-    lensColor: 'جیوه‌ای چندرنگ (Rainbow)',
-    uvProtection: 'UV400 Shield',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1508296695146-257a814070b4?auto=format&fit=crop&q=80&w=800'
-    ],
-    description: 'عینک تخصصی ورزشی فوق‌العاده سبک با فریم TR90 مقاوم در برابر ضربه و عدسی وسیع ضدباد و گردوغبار.',
-    features: ['عدسی یکپارچه پانوورامیک', 'جلوگیری از خستگی چشم در آفتاب شدید', 'ضد لغزش هنگام تعریق'],
-    stock: 8,
-    isFeatured: false,
-    createdAt: new Date().toISOString()
-  }
-];
+const DEFAULT_PRODUCTS: any[] = [];
 
 function getWritableDataFilePath(): string {
   try {
@@ -128,7 +83,19 @@ function getWritableDataFilePath(): string {
   }
 }
 
-let inMemoryStore: { products: any[]; orders: any[]; settings: any; deletedProductIds: string[]; deletedOrderIds: string[]; dataVersion?: number } | null = null;
+const DEFAULT_ANALYTICS = {
+  totalViews: 0,
+  uniqueVisitors: 0,
+  todayViews: 0,
+  todayUnique: 0,
+  lastDate: new Date().toISOString().slice(0, 10),
+  dailyStats: [] as Array<{ date: string; views: number; visitors: number }>,
+  recentVisits: [] as any[],
+};
+
+let inMemoryStore: { products: any[]; orders: any[]; settings: any; analytics?: any; dataVersion?: number } | null = null;
+const liveSessions = new Map<string, { lastSeen: number; page: string; device: string; ip?: string }>();
+const todayVisitorSet = new Set<string>();
 
 function readData() {
   if (inMemoryStore) {
@@ -140,18 +107,17 @@ function readData() {
       const content = fs.readFileSync(filePath, "utf-8");
       const parsed = JSON.parse(content);
       inMemoryStore = {
-        products: Array.isArray(parsed.products) ? parsed.products : DEFAULT_PRODUCTS,
+        products: Array.isArray(parsed.products) ? parsed.products : [],
         orders: Array.isArray(parsed.orders) ? parsed.orders : [],
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
-        deletedProductIds: Array.isArray(parsed.deletedProductIds) ? parsed.deletedProductIds : [],
-        deletedOrderIds: Array.isArray(parsed.deletedOrderIds) ? parsed.deletedOrderIds : []
+        analytics: { ...DEFAULT_ANALYTICS, ...(parsed.analytics || {}) },
       };
       return inMemoryStore;
     }
   } catch (err) {
     console.error("Error reading store file:", err);
   }
-  inMemoryStore = { products: DEFAULT_PRODUCTS, orders: [], settings: DEFAULT_SETTINGS, deletedProductIds: [], deletedOrderIds: [] };
+  inMemoryStore = { products: [], orders: [], settings: DEFAULT_SETTINGS, analytics: DEFAULT_ANALYTICS };
   return inMemoryStore;
 }
 
@@ -338,23 +304,17 @@ app.get("/api/data", (req, res) => {
     products: data.products || [],
     orders: data.orders || [],
     settings: data.settings || DEFAULT_SETTINGS,
-    deletedProductIds: data.deletedProductIds || [],
-    deletedOrderIds: data.deletedOrderIds || [],
   });
 });
 
 app.get("/api/products", (req, res) => {
   const data = readData();
-  const deletedSet = new Set(data.deletedProductIds || []);
-  const activeProducts = (data.products || []).filter((p: any) => p && p.id && !deletedSet.has(p.id));
-  res.json(activeProducts);
+  res.json(data.products || []);
 });
 
 app.get("/api/orders", (req, res) => {
   const data = readData();
-  const deletedSet = new Set(data.deletedOrderIds || []);
-  const activeOrders = (data.orders || []).filter((o: any) => o && o.id && !deletedSet.has(o.id));
-  res.json(activeOrders);
+  res.json(data.orders || []);
 });
 
 app.post("/api/products", (req, res) => {
@@ -363,20 +323,7 @@ app.post("/api/products", (req, res) => {
     return res.status(400).json({ error: "Invalid products" });
   }
   const current = readData();
-  const deletedSet = new Set(current.deletedProductIds || []);
-  const validIncoming = products.filter((p: any) => p && p.id && !deletedSet.has(p.id));
-
-  const existingMap = new Map((current.products || []).map((p: any) => [p.id, p]));
-  for (const p of validIncoming) {
-    const existing = existingMap.get(p.id);
-    if (!existing) {
-      existingMap.set(p.id, p);
-    } else {
-      existingMap.set(p.id, mergeProducts(existing, p));
-    }
-  }
-
-  current.products = Array.from(existingMap.values()).filter((p: any) => !deletedSet.has(p.id));
+  current.products = products.filter((p: any) => p && p.id);
   writeData(current);
   res.json({ success: true, count: current.products.length });
 });
@@ -387,35 +334,33 @@ app.post("/api/orders", (req, res) => {
     return res.status(400).json({ error: "Invalid orders" });
   }
   const current = readData();
-  const deletedSet = new Set(current.deletedOrderIds || []);
-  const validIncoming = orders.filter((o: any) => o && o.id && !deletedSet.has(o.id));
-
-  const existingMap = new Map((current.orders || []).map((o: any) => [o.id, o]));
-  for (const o of validIncoming) {
-    const existing = existingMap.get(o.id);
-    if (!existing) {
-      existingMap.set(o.id, o);
-    } else {
-      existingMap.set(o.id, mergeOrders(existing, o));
-    }
-  }
-
-  current.orders = Array.from(existingMap.values())
-    .filter((o: any) => !deletedSet.has(o.id))
-    .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-
+  current.orders = orders.filter((o: any) => o && o.id).sort((a: any, b: any) => 
+    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
   writeData(current);
   res.json({ success: true, count: current.orders.length });
+});
+
+app.post("/api/reset-all", (req, res) => {
+  const current = readData();
+  current.products = [];
+  current.orders = [];
+  writeData(current);
+  res.json({ success: true, message: "تمامی محصولات و سفارشات با موفقیت پاکسازی شدند." });
 });
 
 app.delete("/api/products/:id", (req, res) => {
   const productId = req.params.id;
   const current = readData();
   current.products = (current.products || []).filter((p: any) => p.id !== productId);
-  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
-  if (!current.deletedProductIds.includes(productId)) {
-    current.deletedProductIds.push(productId);
-  }
+  writeData(current);
+  res.json({ success: true, count: current.products.length });
+});
+
+app.post("/api/products/delete", (req, res) => {
+  const { productId } = req.body;
+  const current = readData();
+  current.products = (current.products || []).filter((p: any) => p.id !== productId);
   writeData(current);
   res.json({ success: true, count: current.products.length });
 });
@@ -424,12 +369,221 @@ app.delete("/api/orders/:id", (req, res) => {
   const orderId = req.params.id;
   const current = readData();
   current.orders = (current.orders || []).filter((o: any) => o.id !== orderId);
-  if (!Array.isArray(current.deletedOrderIds)) current.deletedOrderIds = [];
-  if (!current.deletedOrderIds.includes(orderId)) {
-    current.deletedOrderIds.push(orderId);
-  }
   writeData(current);
   res.json({ success: true, count: current.orders.length });
+});
+
+app.post("/api/orders/delete", (req, res) => {
+  const { orderId } = req.body;
+  const current = readData();
+  current.orders = (current.orders || []).filter((o: any) => o.id !== orderId);
+  writeData(current);
+  res.json({ success: true, count: current.orders.length });
+});
+
+// Analytics & Visitor Counter Endpoints
+app.post("/api/analytics/visit", (req, res) => {
+  try {
+    const { visitorId, page = "/", device = "mobile", referrer = "" } = req.body;
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "local";
+    const vid = visitorId || `vis-${clientIp}`;
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const current = readData();
+    const analytics = current.analytics || { ...DEFAULT_ANALYTICS };
+
+    // Reset daily counters if day changed
+    if (analytics.lastDate !== todayStr) {
+      // Archive yesterday
+      if (!Array.isArray(analytics.dailyStats)) analytics.dailyStats = [];
+      analytics.dailyStats.push({
+        date: analytics.lastDate || 'روز قبل',
+        views: analytics.todayViews || 1,
+        visitors: analytics.todayUnique || 1,
+      });
+      // Keep last 14 days
+      if (analytics.dailyStats.length > 14) {
+        analytics.dailyStats = analytics.dailyStats.slice(-14);
+      }
+      analytics.lastDate = todayStr;
+      analytics.todayViews = 0;
+      analytics.todayUnique = 0;
+      todayVisitorSet.clear();
+    }
+
+    analytics.totalViews = (analytics.totalViews || 0) + 1;
+    analytics.todayViews = (analytics.todayViews || 0) + 1;
+
+    if (!todayVisitorSet.has(vid)) {
+      todayVisitorSet.add(vid);
+      analytics.todayUnique = (analytics.todayUnique || 0) + 1;
+      analytics.uniqueVisitors = (analytics.uniqueVisitors || 0) + 1;
+    }
+
+    // Record live session
+    liveSessions.set(vid, {
+      lastSeen: Date.now(),
+      page,
+      device: device.includes("mobile") || device.includes("phone") ? "mobile" : "desktop",
+      ip: clientIp.slice(0, 8) + '***',
+    });
+
+    // Clean up stale sessions (older than 3 minutes)
+    const now = Date.now();
+    for (const [id, session] of liveSessions.entries()) {
+      if (now - session.lastSeen > 180000) {
+        liveSessions.delete(id);
+      }
+    }
+
+    // Keep recent 20 visit logs
+    if (!Array.isArray(analytics.recentVisits)) analytics.recentVisits = [];
+    analytics.recentVisits.unshift({
+      id: `v-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      page,
+      device,
+      referrer,
+    });
+    if (analytics.recentVisits.length > 20) {
+      analytics.recentVisits = analytics.recentVisits.slice(0, 20);
+    }
+
+    current.analytics = analytics;
+    writeData(current);
+
+    res.json({
+      success: true,
+      stats: {
+        totalViews: analytics.totalViews,
+        uniqueVisitors: analytics.uniqueVisitors,
+        todayViews: analytics.todayViews,
+        todayUnique: analytics.todayUnique,
+        activeOnline: Math.max(1, liveSessions.size),
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'Analytics error' });
+  }
+});
+
+app.post("/api/analytics/heartbeat", (req, res) => {
+  const { visitorId, page = "/" } = req.body;
+  const vid = visitorId || "anon";
+  const existing = liveSessions.get(vid);
+  if (existing) {
+    existing.lastSeen = Date.now();
+    existing.page = page;
+  } else {
+    liveSessions.set(vid, { lastSeen: Date.now(), page, device: "unknown" });
+  }
+
+  const now = Date.now();
+  for (const [id, session] of liveSessions.entries()) {
+    if (now - session.lastSeen > 180000) {
+      liveSessions.delete(id);
+    }
+  }
+
+  res.json({ success: true, activeOnline: Math.max(1, liveSessions.size) });
+});
+
+app.get("/api/analytics/stats", (req, res) => {
+  const current = readData();
+  const analytics = current.analytics || { ...DEFAULT_ANALYTICS };
+
+  const now = Date.now();
+  for (const [id, session] of liveSessions.entries()) {
+    if (now - session.lastSeen > 180000) {
+      liveSessions.delete(id);
+    }
+  }
+
+  res.json({
+    totalViews: analytics.totalViews || 0,
+    uniqueVisitors: analytics.uniqueVisitors || 0,
+    todayViews: analytics.todayViews || 0,
+    todayUnique: analytics.todayUnique || 0,
+    activeOnline: Math.max(1, liveSessions.size),
+    recentVisits: analytics.recentVisits || [],
+    dailyStats: analytics.dailyStats || [],
+  });
+});
+
+
+// Dispatch order notifications to ntfy.sh (No VPN required, ultra-reliable push notifications)
+async function dispatchOrderToNtfy(data: any, settings: any) {
+  try {
+    const topic = settings.ntfyTopic || process.env.NTFY_TOPIC || 'stock_jahani_orders';
+    const serverUrl = (settings.ntfyServerUrl || 'https://ntfy.sh').replace(/\/+$/, '');
+    const enabled = settings.ntfyEnabled !== false;
+    if (!enabled || !topic) return;
+
+    const orderId = data.orderId || data.id || `ORD-${Date.now()}`;
+    const orderCode = data.orderCode || orderId;
+    const customerName = data.customerName || data.customer?.fullName || 'نامشخص';
+    const customerPhone = data.customerPhone || data.customer?.phone || 'نامشخص';
+    const prov = data.customer?.province || '';
+    const city = data.customer?.city || '';
+    const address = data.customerAddress || `${prov} ${city} ${data.customer?.address || ''}`.trim() || 'نامشخص';
+    const total = data.totalPrice || data.finalAmount || data.totalAmount || 0;
+    const totalStr = typeof total === 'number' ? total.toLocaleString('fa-IR') : total;
+
+    const items = data.items || [];
+    const itemsSummary = items.map((i: any) => `${i.name || i.product?.title || 'عینک'} (x${i.quantity || 1})`).join('، ');
+
+    const ntfyBody = `سفارش جدید از: ${customerName}\nتلفن: ${customerPhone}\nمبلغ: ${totalStr} تومان\nاقلام: ${itemsSummary || 'عینک'}\nآدرس: ${address}`;
+
+    const headers: Record<string, string> = {
+      'Title': `=?UTF-8?B?${Buffer.from(`🛒 سفارش جدید ${orderCode}`).toString('base64')}?=`,
+      'Priority': 'urgent',
+      'Tags': 'eyeglasses,tada,moneybag',
+      'Click': 'https://ais-pre-luwgyx4c4a4ugnvqzm4umc-246919081791.europe-west2.run.app',
+      'Content-Type': 'text/plain; charset=utf-8'
+    };
+
+    await fetch(`${serverUrl}/${encodeURIComponent(topic)}`, {
+      method: 'POST',
+      headers,
+      body: ntfyBody
+    });
+    console.log(`[ntfy] Notification sent successfully to topic: ${topic}`);
+  } catch (err) {
+    console.warn('[ntfy notice]:', err);
+  }
+}
+
+app.post("/api/test-ntfy", async (req, res) => {
+  try {
+    const { topic, serverUrl } = req.body;
+    const current = readData();
+    const targetTopic = topic || current.settings?.ntfyTopic || 'stock_jahani_orders';
+    const targetServer = (serverUrl || current.settings?.ntfyServerUrl || 'https://ntfy.sh').replace(/\/+$/, '');
+
+    const headers: Record<string, string> = {
+      'Title': `=?UTF-8?B?${Buffer.from('🔔 تست اتصال نوتیفیکیشن عینک استوک جهانی').toString('base64')}?=`,
+      'Priority': 'high',
+      'Tags': 'white_check_mark,tada,eyeglasses',
+      'Content-Type': 'text/plain; charset=utf-8'
+    };
+
+    const testBody = `اتصال با موفقیت برقرار شد!\nاین پیام تستی از پنل مدیریت فروشگاه عینک استوک جهانی ارسال شده است.\nساعت تست: ${new Date().toLocaleTimeString('fa-IR')}`;
+
+    const resp = await fetch(`${targetServer}/${encodeURIComponent(targetTopic)}`, {
+      method: 'POST',
+      headers,
+      body: testBody
+    });
+
+    if (resp.ok) {
+      res.json({ success: true, message: `پیام تست با موفقیت به تاپیک ${targetTopic} در ntfy ارسال شد.` });
+    } else {
+      const errTxt = await resp.text();
+      res.status(resp.status).json({ success: false, error: errTxt || 'خطا در اتصال به سرور ntfy' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'خطا در ارسال نوتیفیکیشن تست' });
+  }
 });
 
 // Helper with exponential backoff retry for Telegram API calls
@@ -589,9 +743,6 @@ app.post("/api/orders/new", (req, res) => {
     return res.status(400).json({ error: "Invalid order data" });
   }
   const current = readData();
-  if (Array.isArray(current.deletedOrderIds)) {
-    current.deletedOrderIds = current.deletedOrderIds.filter((id: string) => id !== order.id);
-  }
   const existingMap = new Map((current.orders || []).map((o: any) => [o.id, o]));
   const existing = existingMap.get(order.id);
   if (existing) {
@@ -605,8 +756,9 @@ app.post("/api/orders/new", (req, res) => {
   );
   writeData(current);
 
-  // Dispatch notification asynchronously
+  // Dispatch notifications asynchronously to both Telegram and ntfy
   dispatchOrderToTelegram(order, current.settings || {}).catch(() => {});
+  dispatchOrderToNtfy(order, current.settings || {}).catch(() => {});
 
   res.json({ success: true, order });
 });
@@ -619,7 +771,10 @@ app.post("/api/send-order", async (req, res) => {
     }
     const currentData = readData();
     const settings = currentData.settings || {};
-    await dispatchOrderToTelegram(data, settings);
+    await Promise.allSettled([
+      dispatchOrderToTelegram(data, settings),
+      dispatchOrderToNtfy(data, settings)
+    ]);
     return res.json({ success: true });
   } catch (err) {
     console.error('Send order error:', err);
@@ -733,39 +888,15 @@ app.post("/api/settings", (req, res) => {
 app.post("/api/sync-all", (req, res) => {
   const { products, orders, settings } = req.body;
   const current = readData();
-  const delPSet = new Set(current.deletedProductIds || []);
-  const delOSet = new Set(current.deletedOrderIds || []);
 
   if (Array.isArray(products)) {
-    const pMap = new Map((current.products || []).map((p: any) => [p.id, p]));
-    for (const p of products) {
-      if (p && p.id && !delPSet.has(p.id)) {
-        const existing = pMap.get(p.id);
-        if (!existing) {
-          pMap.set(p.id, p);
-        } else {
-          pMap.set(p.id, mergeProducts(existing, p));
-        }
-      }
-    }
-    current.products = Array.from(pMap.values()).filter((p: any) => !delPSet.has(p.id));
+    current.products = products.filter((p: any) => p && p.id);
   }
 
   if (Array.isArray(orders)) {
-    const oMap = new Map((current.orders || []).map((o: any) => [o.id, o]));
-    for (const o of orders) {
-      if (o && o.id && !delOSet.has(o.id)) {
-        const existing = oMap.get(o.id);
-        if (!existing) {
-          oMap.set(o.id, o);
-        } else {
-          oMap.set(o.id, mergeOrders(existing, o));
-        }
-      }
-    }
-    current.orders = Array.from(oMap.values())
-      .filter((o: any) => !delOSet.has(o.id))
-      .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    current.orders = orders.filter((o: any) => o && o.id).sort((a: any, b: any) => 
+      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    );
   }
 
   if (settings && typeof settings === "object") {
@@ -774,36 +905,6 @@ app.post("/api/sync-all", (req, res) => {
 
   writeData(current);
   res.json({ success: true, data: current });
-});
-
-app.post("/api/products/delete", (req, res) => {
-  const { productId } = req.body;
-  if (!productId) {
-    return res.status(400).json({ error: "productId is required" });
-  }
-  const current = readData();
-  current.products = (current.products || []).filter((p: any) => p.id !== productId);
-  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
-  if (!current.deletedProductIds.includes(productId)) {
-    current.deletedProductIds.push(productId);
-  }
-  writeData(current);
-  res.json({ success: true, count: current.products.length });
-});
-
-app.post("/api/orders/delete", (req, res) => {
-  const { orderId } = req.body;
-  if (!orderId) {
-    return res.status(400).json({ error: "orderId is required" });
-  }
-  const current = readData();
-  current.orders = (current.orders || []).filter((o: any) => o.id !== orderId);
-  if (!Array.isArray(current.deletedOrderIds)) current.deletedOrderIds = [];
-  if (!current.deletedOrderIds.includes(orderId)) {
-    current.deletedOrderIds.push(orderId);
-  }
-  writeData(current);
-  res.json({ success: true, count: current.orders.length });
 });
 
 export default app;

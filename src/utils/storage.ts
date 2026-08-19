@@ -1,4 +1,4 @@
-import { Product, Order, StoreSettings, CategoryItem, CouponCode } from '../types';
+import { Product, Order, StoreSettings, CategoryItem, CouponCode, VisitorStats, VisitLog } from '../types';
 import { db, auth } from '../lib/firebase';
 import { collection, getDocs, doc, setDoc, getDoc, deleteDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 
@@ -86,9 +86,23 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   bannerMessage: '✨ ارسال با پست پیشتاز به سراسر کشور | تضمین سلامت فریم و عدسی',
   welcomeText: 'تجربه‌ای متفاوت از کیفیت و استایل با عینک استوک جهانی',
   welcomeSubtext: 'مجموعه کامل عینک‌های آفتابی و طبی اورجینال، فریم‌های استوک کائوچویی و فلزی ساخت اروپا با عدسی‌های پلاریزه و استاندارد کامل UV400.',
+  heroTitle: 'کالکشن جدید عینک‌های استوک و اورجینال اروپایی',
+  heroSubtitle: 'تضمین ۱۰۰٪ اصالت فریم و عدسی UV400، ارسال سریع و رایگان با پست پیشتاز به سراسر کشور',
+  heroBadgeText: '✨ کالکشن جدید ۲۰۲۶ - کیفیت اورجینال',
+  announcementText: '🚀 ارسال رایگان به سراسر کشور برای تمامی سفارش‌ها با بسته‌بندی هاردکیس ضدضربه',
+  showAnnouncement: true,
+  feature1Title: 'ضمانت اصالت و سلامت',
+  feature1Desc: 'تمام عینک‌ها استوک دست‌چین اورجینال اروپایی هستند',
+  feature2Title: 'محافظت کامل UV400',
+  feature2Desc: 'عدسی‌های استاندارد و پلاریزه تست شده ضد اشعه',
+  feature3Title: 'ارسال سریع پیشتاز',
+  feature3Desc: 'تحویل با بسته‌بندی ایمن و کد پیگیری ۲۴ رقمی پست',
+  feature4Title: 'پشتیبانی اختصاصی',
+  feature4Desc: 'مشاوره آنلاین و پاسخگویی سریع در دایرکت و تلگرام',
   noticeText: '💡 خریداران گرامی: پس از ثبت سفارش، کد ۲۴ رقمی رهگیری پستی به همراه وضعیت خریدهای شما در بخش «پیگیری سفارشات» قرار خواهد گرفت.',
   aboutText: 'فروشگاه عینک استوک جهانی عرضه کننده مستقیم جدیدترین فریم‌های طبی و آفتابی استوک اورجینال اروپا با بالاترین کیفیت و نازل‌ترین قیمت.',
   rulesText: 'تمامی بسته‌ها در هاردکیس مقاوم ضدضربه با پُست پیشتاز ارسال شده و کد رهگیری مرسوله پستی پس از ارسال در همین سایت نمایش داده می‌شود.',
+  footerAboutText: 'فروشگاه تخصصی stock_jahani واردکننده و ارائه‌دهنده فریم‌های باکیفیت و خاص با مناسب‌ترین قیمت.',
   categories: DEFAULT_CATEGORIES,
   coupons: DEFAULT_COUPONS,
   instagram: 'stock_jahani',
@@ -103,72 +117,13 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   shebaNumber: 'IR120170000000102030405006',
   telegramBotToken: '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
   telegramChatId: '8574668861',
+  ntfyEnabled: true,
+  ntfyTopic: 'stock_jahani_orders',
+  ntfyServerUrl: 'https://ntfy.sh',
 };
 
 // Ready sample products if user requests demo items
-export const DEMO_PRODUCTS: Product[] = [
-  {
-    id: 'demo-1',
-    title: 'عینک آفتابی فریم خلبانی استوک اروپایی',
-    code: 'STK-901',
-    category: 'sunglasses',
-    price: 1850000,
-    originalPrice: 2400000,
-    frameType: 'فلزی استیل ضدزنگ',
-    lensColor: 'دودی هایلایت (Graded Green)',
-    uvProtection: 'UV400 + Polarized',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&q=80&w=800',
-      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&q=80&w=800'
-    ],
-    description: 'عینک آفتابی خلبانی کلاسیک با کیفیت ساخت درجه یک اروپایی، دارای لنز پلاریزه با وضوح دید فوق‌العاده و محافظت ۱۰۰٪ در برابر اشعه‌های مضر UV. بسیار سبک و مناسب استفاده طولانی‌مدت و رانندگی.',
-    features: ['عدسی پلاریزه واقعی', 'پد بینی سیلیکونی نرم', 'همراه با هارد کیس و دستمال نانو میکروفایبر', 'سبک و مقاوم'],
-    stock: 5,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'demo-2',
-    title: 'عینک طبی کائوچویی فریم گربه‌ای تام فورد',
-    code: 'STK-408',
-    category: 'optical',
-    price: 1650000,
-    originalPrice: 1950000,
-    frameType: 'کائوچو استات درجه یک',
-    lensColor: 'شفاف بلوکات (BlueCut)',
-    uvProtection: 'UV400 + Anti-Reflective',
-    gender: 'زنانه',
-    images: [
-      'https://images.unsplash.com/photo-1577803645773-f96470509666?auto=format&fit=crop&q=80&w=800',
-      'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&fit=crop&q=80&w=800'
-    ],
-    description: 'فریم طبی بسیار شیک گربه‌ای مدرن با دسته مجهز به لولای فنری اروپایی. مناسب برای نمره چشم و کار با کامپیوتر و گوشی.',
-    features: ['فریم استات سبک', 'لولای فنری انعطاف‌پذیر', 'طراحی ارگونومیک صورت', 'مناسب تمام فرم‌های صورت'],
-    stock: 3,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'demo-3',
-    title: 'عینک ورزشی و دوچرخه‌سواری مگنتی اسپرت',
-    code: 'STK-705',
-    category: 'sport',
-    price: 2100000,
-    frameType: 'پلی‌کربنات نشکن TR90',
-    lensColor: 'جیوه‌ای چندرنگ (Rainbow)',
-    uvProtection: 'UV400 Shield',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1508296695146-257a814070b4?auto=format&fit=crop&q=80&w=800'
-    ],
-    description: 'عینک تخصصی ورزشی فوق‌العاده سبک با فریم TR90 مقاوم در برابر ضربه و عدسی وسیع ضدباد و گردوغبار.',
-    features: ['عدسی یکپارچه پانوورامیک', 'جلوگیری از خستگی چشم در آفتاب شدید', 'ضد لغزش هنگام تعریق'],
-    stock: 8,
-    isFeatured: false,
-    createdAt: new Date().toISOString()
-  }
-];
+export const DEMO_PRODUCTS: Product[] = [];
 
 function cleanForFirestore<T>(data: T): T {
   if (data === undefined || data === null) return data;
@@ -196,13 +151,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number = 2500): Promise<T> {
 export function getStoredProducts(): Product[] {
   try {
     const data = localStorage.getItem(PRODUCTS_KEY);
-    if (data === null) return DEMO_PRODUCTS;
+    if (data === null) return [];
     const parsed = JSON.parse(data);
-    const deletedIds = getDeletedProductIds();
     if (Array.isArray(parsed)) {
-      return parsed.filter((p) => p && p.id && !deletedIds.has(p.id));
+      return parsed.filter((p) => p && p.id);
     }
-    return DEMO_PRODUCTS;
+    return [];
   } catch (err) {
     console.error('Error reading products:', err);
     return [];
@@ -210,43 +164,41 @@ export function getStoredProducts(): Product[] {
 }
 
 export async function saveStoredProducts(products: Product[]): Promise<boolean> {
-  products.forEach((p) => {
-    if (p && p.id) {
-      removeDeletedProductId(p.id);
-      if (!p.updatedAt) {
-        p.updatedAt = new Date().toISOString();
-      }
-    }
-  });
+  const validProducts = (products || []).filter((p) => p && p.id).map((p) => ({
+    ...p,
+    updatedAt: p.updatedAt || new Date().toISOString(),
+  }));
 
   try {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(validProducts));
     notifyTabsOfChange();
   } catch (err) {
     console.error('Error saving products locally:', err);
   }
 
-  // Sync to Server API
+  // 1. Send authoritative list to Express Server API
   const apiPromise = fetch('/api/products', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ products }),
+    body: JSON.stringify({ products: validProducts }),
   }).catch(() => {});
 
-  // Primary persistent sync for Firestore
+  // 2. Sync to Firestore
   const firestorePromise = (async () => {
     try {
       const existingSnap = await withTimeout(getDocs(collection(db, 'products')), 3000);
-      const currentIds = new Set(products.map((p) => p.id));
+      const currentIds = new Set(validProducts.map((p) => p.id));
       const batch = writeBatch(db);
 
-      existingSnap.forEach((docSnap) => {
-        if (!currentIds.has(docSnap.id)) {
-          batch.delete(docSnap.ref);
-        }
-      });
+      if (existingSnap) {
+        existingSnap.forEach((docSnap) => {
+          if (!currentIds.has(docSnap.id)) {
+            batch.delete(docSnap.ref);
+          }
+        });
+      }
 
-      products.forEach((p) => {
+      validProducts.forEach((p) => {
         const cleanP = cleanForFirestore(p);
         batch.set(doc(db, 'products', p.id), cleanP);
       });
@@ -254,7 +206,7 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
       await batch.commit();
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'products');
-      for (const p of products) {
+      for (const p of validProducts) {
         try {
           await setDoc(doc(db, 'products', p.id), cleanForFirestore(p));
         } catch (e) {}
@@ -262,11 +214,7 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
     }
   })();
 
-  await Promise.allSettled([
-    firestorePromise,
-    withTimeout(apiPromise, 3000),
-  ]);
-
+  await Promise.allSettled([firestorePromise, withTimeout(apiPromise, 3000)]);
   return true;
 }
 
@@ -275,66 +223,37 @@ export function getStoredOrders(): Order[] {
     const data = localStorage.getItem(ORDERS_KEY);
     if (!data) return [];
     const parsed = JSON.parse(data);
-    const deletedIds = getDeletedOrderIds();
-    return Array.isArray(parsed) ? parsed.filter((o) => o && o.id && !deletedIds.has(o.id)) : [];
+    return Array.isArray(parsed) ? parsed.filter((o) => o && o.id) : [];
   } catch (err) {
     console.error('Error reading orders:', err);
     return [];
   }
 }
 
-// Helper to track deleted product and order IDs so they don't get restored by stale remote sync
-const DELETED_PRODUCTS_KEY = 'stock_jahani_deleted_product_ids';
-const DELETED_ORDERS_KEY = 'stock_jahani_deleted_order_ids';
-
-export function getDeletedProductIds(): Set<string> {
+export async function resetAllStoreData(): Promise<boolean> {
   try {
-    const data = localStorage.getItem(DELETED_PRODUCTS_KEY);
-    return data ? new Set(JSON.parse(data)) : new Set();
+    localStorage.removeItem(PRODUCTS_KEY);
+    localStorage.removeItem(ORDERS_KEY);
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
+    localStorage.setItem(ORDERS_KEY, JSON.stringify([]));
+    notifyTabsOfChange();
+
+    await fetch('/api/reset-all', { method: 'POST' }).catch(() => {});
+
+    try {
+      const pSnap = await withTimeout(getDocs(collection(db, 'products')), 3000);
+      const oSnap = await withTimeout(getDocs(collection(db, 'orders')), 3000);
+      const batch = writeBatch(db);
+      pSnap?.forEach((d) => batch.delete(d.ref));
+      oSnap?.forEach((d) => batch.delete(d.ref));
+      await batch.commit().catch(() => {});
+    } catch (e) {}
+
+    return true;
   } catch (e) {
-    return new Set();
+    console.error('Error in resetAllStoreData:', e);
+    return false;
   }
-}
-
-export function addDeletedProductId(id: string) {
-  try {
-    const current = getDeletedProductIds();
-    current.add(id);
-    localStorage.setItem(DELETED_PRODUCTS_KEY, JSON.stringify(Array.from(current)));
-  } catch (e) {}
-}
-
-export function removeDeletedProductId(id: string) {
-  try {
-    const current = getDeletedProductIds();
-    current.delete(id);
-    localStorage.setItem(DELETED_PRODUCTS_KEY, JSON.stringify(Array.from(current)));
-  } catch (e) {}
-}
-
-export function getDeletedOrderIds(): Set<string> {
-  try {
-    const data = localStorage.getItem(DELETED_ORDERS_KEY);
-    return data ? new Set(JSON.parse(data)) : new Set();
-  } catch (e) {
-    return new Set();
-  }
-}
-
-export function addDeletedOrderId(id: string) {
-  try {
-    const current = getDeletedOrderIds();
-    current.add(id);
-    localStorage.setItem(DELETED_ORDERS_KEY, JSON.stringify(Array.from(current)));
-  } catch (e) {}
-}
-
-export function removeDeletedOrderId(id: string) {
-  try {
-    const current = getDeletedOrderIds();
-    current.delete(id);
-    localStorage.setItem(DELETED_ORDERS_KEY, JSON.stringify(Array.from(current)));
-  } catch (e) {}
 }
 
 function parseTimestamp(dateStr?: string): number {
@@ -343,7 +262,6 @@ function parseTimestamp(dateStr?: string): number {
   return isNaN(t) ? 0 : t;
 }
 
-// Helper to merge settings objects using updatedAt timestamps for conflict resolution
 export function mergeSettingsObjects(...settingsList: (StoreSettings | null | undefined)[]): StoreSettings {
   let result: StoreSettings = { ...DEFAULT_SETTINGS };
   let newestTimestamp = 0;
@@ -362,32 +280,22 @@ export function mergeSettingsObjects(...settingsList: (StoreSettings | null | un
   return result;
 }
 
-// Helper to merge product lists seamlessly without losing local edits or additions
 export function mergeProductsList(...lists: Product[][]): Product[] {
-  const deletedIds = getDeletedProductIds();
   const map = new Map<string, Product>();
   for (const list of lists) {
     if (!Array.isArray(list)) continue;
     for (const prod of list) {
       if (!prod || !prod.id) continue;
-      if (deletedIds.has(prod.id)) continue;
       const existing = map.get(prod.id);
       if (!existing) {
         map.set(prod.id, prod);
       } else {
         const existingTime = parseTimestamp(existing.updatedAt || existing.createdAt);
         const newTime = parseTimestamp(prod.updatedAt || prod.createdAt);
-        if (newTime > existingTime) {
+        if (newTime >= existingTime) {
           map.set(prod.id, { ...existing, ...prod });
-        } else if (existingTime > newTime) {
-          map.set(prod.id, { ...prod, ...existing });
         } else {
-          const merged: Product = {
-            ...existing,
-            ...prod,
-            updatedAt: prod.updatedAt || existing.updatedAt,
-          };
-          map.set(prod.id, merged);
+          map.set(prod.id, { ...prod, ...existing });
         }
       }
     }
@@ -395,38 +303,22 @@ export function mergeProductsList(...lists: Product[][]): Product[] {
   return Array.from(map.values());
 }
 
-// Helper to merge order lists seamlessly without losing any order across devices
 export function mergeOrdersList(...lists: Order[][]): Order[] {
-  const deletedIds = getDeletedOrderIds();
   const map = new Map<string, Order>();
   for (const list of lists) {
     if (!Array.isArray(list)) continue;
     for (const order of list) {
       if (!order || !order.id) continue;
-      if (deletedIds.has(order.id)) continue;
       const existing = map.get(order.id);
       if (!existing) {
         map.set(order.id, order);
       } else {
         const existingTime = parseTimestamp(existing.updatedAt || existing.createdAt);
         const newTime = parseTimestamp(order.updatedAt || order.createdAt);
-        if (newTime > existingTime) {
+        if (newTime >= existingTime) {
           map.set(order.id, { ...existing, ...order });
-        } else if (existingTime > newTime) {
-          map.set(order.id, { ...order, ...existing });
         } else {
-          const merged: Order = {
-            ...existing,
-            ...order,
-            status: order.status && order.status !== 'pending' ? order.status : (existing.status && existing.status !== 'pending' ? existing.status : order.status),
-            postalTrackingCode: order.postalTrackingCode || existing.postalTrackingCode,
-            adminNote: order.adminNote !== undefined ? order.adminNote : existing.adminNote,
-            paymentReceipt: order.paymentReceipt || existing.paymentReceipt,
-            paymentRefId: order.paymentRefId || existing.paymentRefId,
-            isPaid: order.isPaid || existing.isPaid,
-            updatedAt: order.updatedAt || existing.updatedAt,
-          };
-          map.set(order.id, merged);
+          map.set(order.id, { ...order, ...existing });
         }
       }
     }
@@ -436,88 +328,40 @@ export function mergeOrdersList(...lists: Order[][]): Order[] {
   );
 }
 
-// Pending offline/hybrid sync queue
-const PENDING_ORDERS_KEY = 'pending_sync_orders';
-
-export function enqueuePendingOrders(orders: Order[]) {
-  try {
-    const existingStr = localStorage.getItem(PENDING_ORDERS_KEY);
-    const existing: Order[] = existingStr ? JSON.parse(existingStr) : [];
-    const merged = mergeOrdersList(existing, orders);
-    localStorage.setItem(PENDING_ORDERS_KEY, JSON.stringify(merged));
-  } catch (e) {}
-}
-
-export async function processPendingSyncQueue() {
-  try {
-    const pendingStr = localStorage.getItem(PENDING_ORDERS_KEY);
-    if (!pendingStr) return;
-    const pendingOrders: Order[] = JSON.parse(pendingStr);
-    if (!Array.isArray(pendingOrders) || pendingOrders.length === 0) return;
-
-    let synced = false;
-
-    // 1. Try Server API
-    try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: pendingOrders }),
-      });
-      if (res.ok) synced = true;
-    } catch (e) {}
-
-    // 2. Try Firestore
-    try {
-      for (const o of pendingOrders) {
-        await setDoc(doc(db, 'orders', o.id), cleanForFirestore(o));
-      }
-      synced = true;
-    } catch (e) {}
-
-    if (synced) {
-      localStorage.removeItem(PENDING_ORDERS_KEY);
-      console.log('Pending orders successfully synced in background!');
-    }
-  } catch (e) {}
-}
-
 export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
-  orders.forEach((o) => {
-    if (o && o.id) removeDeletedOrderId(o.id);
-  });
+  const validOrders = (orders || []).filter((o) => o && o.id);
 
-  // 1. Synchronous immediate local storage update (0ms delay for user UI)
+  // 1. Immediate local storage update
   try {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    localStorage.setItem(ORDERS_KEY, JSON.stringify(validOrders));
     notifyTabsOfChange();
   } catch (err) {
     console.error('Error saving orders locally:', err);
   }
 
-  const cleanOrders = orders.map(cleanForFirestore);
+  const cleanOrders = validOrders.map(cleanForFirestore);
 
   // 2. Immediate Server API sync (/api/orders)
   fetch('/api/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orders: cleanOrders }),
-  }).catch(() => {
-    enqueuePendingOrders(orders);
-  });
+  }).catch(() => {});
 
   // 3. Persistent Firestore sync
   (async () => {
     try {
       const existingSnap = await withTimeout(getDocs(collection(db, 'orders')), 3000);
-      const currentIds = new Set(orders.map((o) => o.id));
+      const currentIds = new Set(validOrders.map((o) => o.id));
       const batch = writeBatch(db);
 
-      existingSnap.forEach((docSnap) => {
-        if (!currentIds.has(docSnap.id)) {
-          batch.delete(docSnap.ref);
-        }
-      });
+      if (existingSnap) {
+        existingSnap.forEach((docSnap) => {
+          if (!currentIds.has(docSnap.id)) {
+            batch.delete(docSnap.ref);
+          }
+        });
+      }
 
       cleanOrders.forEach((o) => {
         batch.set(doc(db, 'orders', o.id), o);
@@ -538,10 +382,6 @@ export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
 }
 
 export async function saveSingleOrder(order: Order): Promise<boolean> {
-  if (order && order.id) {
-    removeDeletedOrderId(order.id);
-  }
-
   const cleanOrder: Order = {
     ...cleanForFirestore(order),
     createdAt: order.createdAt || new Date().toISOString(),
@@ -573,7 +413,7 @@ export async function saveSingleOrder(order: Order): Promise<boolean> {
   // 1. Save to local storage instantly (0ms)
   try {
     const existing = getStoredOrders();
-    const updated = mergeOrdersList([cleanOrder], existing);
+    const updated = [cleanOrder, ...existing.filter((o) => o.id !== cleanOrder.id)];
     localStorage.setItem(ORDERS_KEY, JSON.stringify(updated));
     notifyTabsOfChange();
     savedLocal = true;
@@ -599,18 +439,11 @@ export async function saveSingleOrder(order: Order): Promise<boolean> {
 
   let savedRemote = false;
   try {
-    const apiResult = await withTimeout(apiPromise, 5000).catch(() => false);
+    const apiResult = await withTimeout(apiPromise, 4000).catch(() => false);
     if (apiResult === true) savedRemote = true;
   } catch (e) {
     console.warn('Express order sync notice:', e);
   }
-
-  // Allow Firestore to finish in background silently
-  firestorePromise.then((success) => {
-    if (!savedRemote && !success) {
-      enqueuePendingOrders([cleanOrder]);
-    }
-  });
 
   return savedLocal || savedRemote;
 }
@@ -628,11 +461,6 @@ export function getStoredSettings(): StoreSettings {
     }
     if (!parsed.telegramBotToken) {
       parsed.telegramBotToken = '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
-    }
-    try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...DEFAULT_SETTINGS, ...parsed }));
-    } catch (e) {
-      // Ignore storage errors
     }
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch (err) {
@@ -669,8 +497,6 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
 }
 
 export async function deleteProductFromFirestore(productId: string): Promise<boolean> {
-  addDeletedProductId(productId);
-
   // Update local storage immediately
   const remaining = getStoredProducts().filter((p) => p.id !== productId);
   try {
@@ -681,11 +507,6 @@ export async function deleteProductFromFirestore(productId: string): Promise<boo
 
   // Delete from backend server API and Firestore in parallel
   Promise.allSettled([
-    fetch('/api/products/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId }),
-    }),
     fetch(`/api/products/${productId}`, {
       method: 'DELETE',
     }),
@@ -703,21 +524,15 @@ export async function deleteProductFromFirestore(productId: string): Promise<boo
 }
 
 export async function deleteOrderFromFirestore(orderId: string): Promise<boolean> {
-  addDeletedOrderId(orderId);
-
   // Update local storage immediately
   const remaining = getStoredOrders().filter((o) => o.id !== orderId);
   try {
     localStorage.setItem(ORDERS_KEY, JSON.stringify(remaining));
   } catch (e) {}
 
-  // Delete from backend server API
-  fetch('/api/orders/delete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderId }),
-  }).catch(() => {});
+  notifyTabsOfChange();
 
+  // Delete from backend server API
   fetch(`/api/orders/${orderId}`, {
     method: 'DELETE',
   }).catch(() => {});
@@ -739,19 +554,12 @@ export async function deleteOrderFromFirestore(orderId: string): Promise<boolean
 
 // Fetch and merge all shared data from Express Server API, Firestore, and LocalStorage
 export async function fetchServerData(): Promise<{ products: Product[]; orders: Order[]; settings: StoreSettings }> {
-  // Process any pending offline/network retry queue first
-  processPendingSyncQueue();
-
-  const localProducts = getStoredProducts();
-  const localOrders = getStoredOrders();
-  const localSettings = getStoredSettings();
-
-  let apiProducts: Product[] = [];
-  let apiOrders: Order[] = [];
+  let apiProducts: Product[] | null = null;
+  let apiOrders: Order[] | null = null;
   let apiSettings: StoreSettings | null = null;
 
-  let fsProducts: Product[] = [];
-  let fsOrders: Order[] = [];
+  let fsProducts: Product[] | null = null;
+  let fsOrders: Order[] | null = null;
   let fsSettings: StoreSettings | null = null;
 
   // 1. Fetch from Express Server API (Primary fast source)
@@ -763,19 +571,13 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
         if (Array.isArray(data.products)) apiProducts = data.products;
         if (Array.isArray(data.orders)) apiOrders = data.orders;
         if (data.settings && typeof data.settings === 'object') apiSettings = data.settings;
-        if (Array.isArray(data.deletedProductIds)) {
-          data.deletedProductIds.forEach((id: string) => addDeletedProductId(id));
-        }
-        if (Array.isArray(data.deletedOrderIds)) {
-          data.deletedOrderIds.forEach((id: string) => addDeletedOrderId(id));
-        }
       }
     }
   } catch (e) {
     console.warn('Express API fetch notice:', e);
   }
 
-  // 2. Fetch from Firestore asynchronously with 4s max timeout
+  // 2. Fetch from Firestore asynchronously
   const remoteSync = withTimeout(
     Promise.all([
       getDocs(collection(db, 'orders')).catch((err) => {
@@ -792,57 +594,42 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
       }),
     ]).then(([ordersSnap, productsSnap, settingsDoc]) => {
       if (ordersSnap) {
-        ordersSnap.forEach((d) => d.exists() && fsOrders.push(d.data() as Order));
+        fsOrders = [];
+        ordersSnap.forEach((d) => d.exists() && fsOrders!.push(d.data() as Order));
       }
       if (productsSnap) {
-        productsSnap.forEach((d) => d.exists() && fsProducts.push(d.data() as Product));
+        fsProducts = [];
+        productsSnap.forEach((d) => d.exists() && fsProducts!.push(d.data() as Product));
       }
       if (settingsDoc && settingsDoc.exists()) {
         fsSettings = settingsDoc.data() as StoreSettings;
       }
     }),
-    4000
+    3000
   ).catch(() => {});
 
-  await withTimeout(remoteSync, 4000).catch(() => {});
+  await withTimeout(remoteSync, 3000).catch(() => {});
 
-  const deletedProductIds = getDeletedProductIds();
-  const deletedOrderIds = getDeletedOrderIds();
+  // Authoritative determination: server API > Firestore > LocalStorage
+  let products: Product[] = [];
+  if (apiProducts !== null) {
+    products = apiProducts.filter((p) => p && p.id);
+  } else if (fsProducts !== null) {
+    products = fsProducts.filter((p) => p && p.id);
+  } else {
+    products = getStoredProducts().filter((p) => p && p.id);
+  }
 
-  const hasRemoteProducts = apiProducts.length > 0 || fsProducts.length > 0;
-  const remoteProdIds = new Set([
-    ...apiProducts.map((p) => p.id),
-    ...fsProducts.map((p) => p.id),
-  ]);
+  let orders: Order[] = [];
+  if (apiOrders !== null) {
+    orders = apiOrders.filter((o) => o && o.id);
+  } else if (fsOrders !== null) {
+    orders = fsOrders.filter((o) => o && o.id);
+  } else {
+    orders = getStoredOrders().filter((o) => o && o.id);
+  }
 
-  const now = Date.now();
-  const activeLocalProducts = localProducts.filter((p) => {
-    if (!p || !p.id || deletedProductIds.has(p.id)) return false;
-    if (hasRemoteProducts && !remoteProdIds.has(p.id)) {
-      const createdTime = p.createdAt ? new Date(p.createdAt).getTime() : 0;
-      if (now - createdTime > 3000) return false;
-    }
-    return true;
-  });
-
-  const hasRemoteOrders = apiOrders.length > 0 || fsOrders.length > 0;
-  const remoteOrderIds = new Set([
-    ...apiOrders.map((o) => o.id),
-    ...fsOrders.map((o) => o.id),
-  ]);
-
-  const activeLocalOrders = localOrders.filter((o) => {
-    if (!o || !o.id || deletedOrderIds.has(o.id)) return false;
-    if (hasRemoteOrders && !remoteOrderIds.has(o.id)) {
-      const createdTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
-      if (now - createdTime > 3000) return false;
-    }
-    return true;
-  });
-
-  // Safely merge products, orders, and settings from ALL sources using timestamp-based conflict resolution
-  const products = mergeProductsList(activeLocalProducts, apiProducts, fsProducts).filter((p) => !deletedProductIds.has(p.id));
-  const orders = mergeOrdersList(activeLocalOrders, apiOrders, fsOrders).filter((o) => !deletedOrderIds.has(o.id));
+  const localSettings = getStoredSettings();
   const settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings, apiSettings);
 
   try {
@@ -850,13 +637,6 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (e) {}
-
-  // Back-sync complete merged state to Express Server API
-  fetch('/api/sync-all', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ products, orders, settings }),
-  }).catch(() => {});
 
   return { products, orders, settings };
 }
@@ -867,7 +647,6 @@ export function subscribeToFirestore(
   onError?: (errMessage: string) => void
 ) {
   let lastServerVersion = 0;
-  let lastStateHash = '';
   let isPolling = false;
 
   // Active Firestore onSnapshot listeners for instant broadcasting across clients
@@ -887,24 +666,10 @@ export function subscribeToFirestore(
           }
         });
 
-        const deletedIds = getDeletedProductIds();
-        const fsProdIds = new Set(fsProds.map((p) => p.id));
-        const localProds = getStoredProducts();
-
-        const now = Date.now();
-        const pendingLocalProds = localProds.filter((p) => {
-          if (!p || !p.id || deletedIds.has(p.id)) return false;
-          if (fsProdIds.has(p.id)) return false;
-          const createdTime = p.createdAt ? new Date(p.createdAt).getTime() : 0;
-          return now - createdTime < 3000;
-        });
-
-        const activeFsProds = fsProds.filter((p) => !deletedIds.has(p.id));
-        const mergedProds = mergeProductsList(activeFsProds, pendingLocalProds);
         try {
-          localStorage.setItem(PRODUCTS_KEY, JSON.stringify(mergedProds));
+          localStorage.setItem(PRODUCTS_KEY, JSON.stringify(fsProds));
         } catch (e) {}
-        onDataUpdate({ products: mergedProds });
+        onDataUpdate({ products: fsProds });
       },
       (err) => {
         handleFirestoreError(err, OperationType.LIST, 'products');
@@ -926,27 +691,14 @@ export function subscribeToFirestore(
           }
         });
 
-        const deletedIds = getDeletedOrderIds();
-        const fsOrderIds = new Set(fsOrds.map((o) => o.id));
         const localOrds = getStoredOrders();
         const localIds = new Set(localOrds.map((o) => o.id));
+        const newIncomingOrders = fsOrds.filter((o) => !localIds.has(o.id));
 
-        const newIncomingOrders = fsOrds.filter((o) => !localIds.has(o.id) && !deletedIds.has(o.id));
-
-        const now = Date.now();
-        const pendingLocalOrds = localOrds.filter((o) => {
-          if (!o || !o.id || deletedIds.has(o.id)) return false;
-          if (fsOrderIds.has(o.id)) return false;
-          const createdTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
-          return now - createdTime < 3000;
-        });
-
-        const activeFsOrders = fsOrds.filter((o) => !deletedIds.has(o.id));
-        const mergedOrds = mergeOrdersList(activeFsOrders, pendingLocalOrds);
         try {
-          localStorage.setItem(ORDERS_KEY, JSON.stringify(mergedOrds));
+          localStorage.setItem(ORDERS_KEY, JSON.stringify(fsOrds));
         } catch (e) {}
-        onDataUpdate({ orders: mergedOrds, newOrders: newIncomingOrders });
+        onDataUpdate({ orders: fsOrds, newOrders: newIncomingOrders });
       },
       (err) => {
         handleFirestoreError(err, OperationType.LIST, 'orders');
@@ -985,38 +737,18 @@ export function subscribeToFirestore(
     if (isPolling) return;
     isPolling = true;
     try {
-      try {
-        const vRes = await fetch('/api/version?t=' + Date.now(), { cache: 'no-store' });
-        if (vRes.ok) {
-          const vData = await vRes.json();
-          if (vData && vData.version && vData.version !== lastServerVersion) {
-            lastServerVersion = vData.version;
-            const freshData = await fetchServerData();
-            if (freshData) {
-              onDataUpdate(freshData);
-            }
-            return;
+      const vRes = await fetch('/api/version?t=' + Date.now(), { cache: 'no-store' });
+      if (vRes.ok) {
+        const vData = await vRes.json();
+        if (vData && vData.version && vData.version !== lastServerVersion) {
+          lastServerVersion = vData.version;
+          const freshData = await fetchServerData();
+          if (freshData) {
+            onDataUpdate(freshData);
           }
         }
-      } catch (e) {}
-
-      // Fallback hash polling
-      try {
-        const serverData = await fetchServerData();
-        if (serverData) {
-          const currentHash = JSON.stringify({
-            pCount: serverData.products.length,
-            oCount: serverData.orders.length,
-            pMod: serverData.products.map(p => `${p.id}_${p.stock}_${p.price}`),
-            oMod: serverData.orders.map(o => `${o.id}_${o.status}_${o.postalTrackingCode || ''}_${o.isPaid}`)
-          });
-
-          if (currentHash !== lastStateHash) {
-            lastStateHash = currentHash;
-            onDataUpdate(serverData);
-          }
-        }
-      } catch (e) {}
+      }
+    } catch (e) {
     } finally {
       isPolling = false;
     }
@@ -1062,7 +794,7 @@ export function subscribeToFirestore(
   }
 
   const handleStorageChange = (e: StorageEvent) => {
-    if (e.key === PRODUCTS_KEY || e.key === ORDERS_KEY || e.key === SETTINGS_KEY || e.key === DELETED_PRODUCTS_KEY || e.key === DELETED_ORDERS_KEY) {
+    if (e.key === PRODUCTS_KEY || e.key === ORDERS_KEY || e.key === SETTINGS_KEY) {
       handleCrossTabSync();
     }
   };
@@ -1100,6 +832,7 @@ export function notifyTabsOfChange() {
     } catch (e) {}
   }
 }
+
 export function fileToBase64(file: File, maxWidth = 600, quality = 0.60): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1278,14 +1011,20 @@ export async function sendTelegramOrderNotification(order: Order, settings?: Sto
   }
 }
 
-const NTFY_TOPIC_URL = 'https://ntfy.sh/berim-birun-x7k2m';
-export function sendNtfyOrderAlert(order: Order): void {
+export function sendNtfyOrderAlert(order: Order, settings?: StoreSettings): void {
   try {
+    const currentSettings = settings || getStoredSettings();
+    if (currentSettings.ntfyEnabled === false) return;
+
+    const topic = currentSettings.ntfyTopic || 'stock_jahani_orders';
+    const serverUrl = (currentSettings.ntfyServerUrl || 'https://ntfy.sh').replace(/\/+$/, '');
+    const fullUrl = `${serverUrl}/${encodeURIComponent(topic)}`;
+
     const itemsSummary = order.items
       .map((i) => `${i.product.title} ×${i.quantity}`)
       .join('، ');
 
-    fetch(NTFY_TOPIC_URL, {
+    fetch(fullUrl, {
       method: 'POST',
       headers: {
         'Title': `New order - ${order.orderCode}`,
@@ -1338,5 +1077,75 @@ export function importBackupData(jsonString: string): boolean {
     console.error('Failed to import backup:', err);
     return false;
   }
+}
+
+// Visitor Tracking & Live Analytics
+const VISITOR_ID_KEY = 'stock_jahani_vid';
+
+export function getOrCreateVisitorId(): string {
+  try {
+    let vid = localStorage.getItem(VISITOR_ID_KEY);
+    if (!vid) {
+      vid = `v_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      localStorage.setItem(VISITOR_ID_KEY, vid);
+    }
+    return vid;
+  } catch (e) {
+    return `v_anon_${Date.now()}`;
+  }
+}
+
+export async function trackPageVisit(page: string = '/'): Promise<VisitorStats | null> {
+  try {
+    const visitorId = getOrCreateVisitorId();
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      typeof navigator !== 'undefined' ? navigator.userAgent : ''
+    );
+    const device = isMobile ? 'mobile' : 'desktop';
+    const referrer = typeof document !== 'undefined' ? document.referrer : '';
+
+    const res = await fetch('/api/analytics/visit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visitorId, page, device, referrer }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return data.stats || null;
+    }
+  } catch (e) {}
+  return null;
+}
+
+export async function fetchVisitorStats(): Promise<VisitorStats> {
+  try {
+    const res = await fetch('/api/analytics/stats?t=' + Date.now(), { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch (e) {}
+
+  return {
+    totalViews: 0,
+    uniqueVisitors: 0,
+    todayViews: 0,
+    todayUnique: 0,
+    activeOnline: 1,
+    recentVisits: [],
+    dailyStats: [],
+  };
+}
+
+export function sendHeartbeat(page: string = '/') {
+  try {
+    const visitorId = getOrCreateVisitorId();
+    fetch('/api/analytics/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visitorId, page }),
+    }).catch(() => {});
+  } catch (e) {}
 }
 

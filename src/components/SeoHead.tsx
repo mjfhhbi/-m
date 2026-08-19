@@ -10,7 +10,7 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ settings, selectedProduct }) =
   useEffect(() => {
     // 1. Dynamic Page Title
     const pageTitle = selectedProduct
-      ? `${selectedProduct.title} | ${settings.storeName || 'عینک استوک جهانی'}`
+      ? (selectedProduct.seoTitle || `${selectedProduct.title} | ${settings.storeName || 'عینک استوک جهانی'}`)
       : (settings.seoTitle || `${settings.storeName || 'فروشگاه عینک استوک جهانی'} | عینک آفتابی و طبی اورجینال`);
     document.title = pageTitle;
 
@@ -28,11 +28,49 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ settings, selectedProduct }) =
 
     // Description & Keywords
     const metaDesc = selectedProduct
-      ? selectedProduct.description || `${selectedProduct.title} - ${selectedProduct.frameType} با عدسی ${selectedProduct.lensColor}`
-      : (settings.seoDescription || settings.tagline || 'فروشگاه آنلاین عینک‌های استوک اورجینال آفتابی و طبی ساخت اروپا');
+      ? (selectedProduct.seoDescription || selectedProduct.description || `خرید ${selectedProduct.title} - فریم ${selectedProduct.frameType} با عدسی ${selectedProduct.lensColor} و محافظت ${selectedProduct.uvProtection} اورجینال استوک`)
+      : (settings.seoDescription || settings.tagline || 'فروشگاه آنلاین عینک‌های استوک اورجینال آفتابی و طبی ساخت اروپا با ارسال رایگان و ضمانت اصالت');
     
+    const metaKeywords = selectedProduct
+      ? (selectedProduct.seoKeywords || `${selectedProduct.title}, عینک ${selectedProduct.frameType}, عدسی ${selectedProduct.lensColor}, ${selectedProduct.uvProtection}, عینک استوک اورجینال`)
+      : (settings.seoKeywords || 'عینک استوک, عینک آفتابی, عینک طبی, عینک خلبانی, عینک ورزشی, خرید عینک اورجینال');
+
     setMetaTag('name', 'description', metaDesc);
-    setMetaTag('name', 'keywords', settings.seoKeywords || 'عینک استوک, عینک آفتابی, عینک طبی, عینک خلبانی, عینک ورزشی');
+    setMetaTag('name', 'keywords', metaKeywords);
+
+    // OpenGraph Social Tags (Telegram, WhatsApp, Instagram, Facebook)
+    const ogTitle = selectedProduct
+      ? (selectedProduct.seoTitle || selectedProduct.title)
+      : (settings.ogTitle || settings.seoTitle || settings.storeName || 'فروشگاه عینک استوک جهانی');
+
+    const ogDesc = selectedProduct
+      ? (selectedProduct.seoDescription || metaDesc)
+      : (settings.ogDescription || settings.seoDescription || metaDesc);
+
+    const ogImg = selectedProduct
+      ? (selectedProduct.ogImage || (selectedProduct.images && selectedProduct.images[0]) || '')
+      : (settings.ogImage || (settings as any).heroBanner || '');
+
+    const currentUrl = selectedProduct
+      ? `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(selectedProduct.id)}`
+      : window.location.href;
+
+    setMetaTag('property', 'og:title', ogTitle);
+    setMetaTag('property', 'og:description', ogDesc);
+    setMetaTag('property', 'og:type', selectedProduct ? 'product' : 'website');
+    setMetaTag('property', 'og:url', currentUrl);
+    setMetaTag('property', 'og:site_name', settings.storeName || 'عینک استوک جهانی');
+    if (ogImg) {
+      setMetaTag('property', 'og:image', ogImg);
+    }
+
+    // Twitter Card Tags
+    setMetaTag('name', 'twitter:card', 'summary_large_image');
+    setMetaTag('name', 'twitter:title', ogTitle);
+    setMetaTag('name', 'twitter:description', ogDesc);
+    if (ogImg) {
+      setMetaTag('name', 'twitter:image', ogImg);
+    }
 
     // Google Search Console Verification
     if (settings.googleSiteVerification) {
@@ -42,14 +80,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ settings, selectedProduct }) =
     // Bing Verification
     if (settings.bingSiteVerification) {
       setMetaTag('name', 'msvalidate.01', settings.bingSiteVerification);
-    }
-
-    // OpenGraph Social Tags
-    setMetaTag('property', 'og:title', pageTitle);
-    setMetaTag('property', 'og:description', metaDesc);
-    setMetaTag('property', 'og:type', selectedProduct ? 'product' : 'website');
-    if (selectedProduct && selectedProduct.images && selectedProduct.images[0]) {
-      setMetaTag('property', 'og:image', selectedProduct.images[0]);
     }
 
     // 3. Inject JSON-LD Schema.org Structured Data

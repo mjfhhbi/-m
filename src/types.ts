@@ -21,6 +21,10 @@ export interface Product {
   features: string[];
   stock: number;
   isFeatured?: boolean;
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
+  ogImage?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -81,9 +85,23 @@ export interface StoreSettings {
   bannerMessage?: string;
   welcomeText?: string;
   welcomeSubtext?: string;
+  heroTitle?: string;
+  heroSubtitle?: string;
+  heroBadgeText?: string;
+  announcementText?: string;
+  showAnnouncement?: boolean;
+  feature1Title?: string;
+  feature1Desc?: string;
+  feature2Title?: string;
+  feature2Desc?: string;
+  feature3Title?: string;
+  feature3Desc?: string;
+  feature4Title?: string;
+  feature4Desc?: string;
   noticeText?: string;
   aboutText?: string;
   rulesText?: string;
+  footerAboutText?: string;
   categories?: CategoryItem[];
   coupons?: CouponCode[];
   instagram: string;
@@ -91,6 +109,9 @@ export interface StoreSettings {
   telegramBotToken?: string;
   telegramChatId?: string;
   telegramWebhookUrl?: string;
+  ntfyEnabled?: boolean;
+  ntfyTopic?: string;
+  ntfyServerUrl?: string;
   phone: string;
   address: string;
   freeShippingThreshold: number;
@@ -106,6 +127,9 @@ export interface StoreSettings {
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
   googleSiteVerification?: string;
   bingSiteVerification?: string;
   torobFeedEnabled?: boolean;
@@ -113,5 +137,31 @@ export interface StoreSettings {
   robotsTxtContent?: string;
   googleAnalyticsId?: string;
   clarityProjectId?: string;
+  showVisitorCounterInFooter?: boolean;
   updatedAt?: string;
+}
+
+export interface VisitLog {
+  id: string;
+  timestamp: string;
+  page: string;
+  device: 'mobile' | 'desktop' | 'tablet';
+  browser?: string;
+  referrer?: string;
+}
+
+export interface DailyStat {
+  date: string;
+  views: number;
+  visitors: number;
+}
+
+export interface VisitorStats {
+  totalViews: number;
+  uniqueVisitors: number;
+  todayViews: number;
+  todayUnique: number;
+  activeOnline: number;
+  recentVisits: VisitLog[];
+  dailyStats: DailyStat[];
 }

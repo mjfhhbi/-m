@@ -6,7 +6,8 @@ import {
   OrderCustomer,
   StoreSettings, 
   CategoryType, 
-  OrderStatus 
+  OrderStatus,
+  VisitorStats
 } from './types';
 import { 
   getStoredProducts, 
@@ -19,13 +20,13 @@ import {
   subscribeToFirestore,
   deleteProductFromFirestore,
   deleteOrderFromFirestore,
-  addDeletedProductId,
-  removeDeletedProductId,
-  addDeletedOrderId,
-  removeDeletedOrderId,
   mergeProductsList,
   mergeOrdersList,
-  DEMO_PRODUCTS
+  DEMO_PRODUCTS,
+  trackPageVisit,
+  sendHeartbeat,
+  fetchVisitorStats,
+  toPersianDigits
 } from './utils/storage';
 
 import { Header } from './components/Header';
@@ -44,7 +45,7 @@ import { IntroSplash } from './components/IntroSplash';
 import { SeoHead } from './components/SeoHead';
 import { Toast } from './components/Toast';
 
-import { Glasses, Plus, ShieldCheck, Sparkles, RefreshCw, ShoppingBag, Instagram, Phone, Send, Lock, X, KeyRound, Headphones, MessageSquare, ArrowRightLeft } from 'lucide-react';
+import { Glasses, Plus, ShieldCheck, Sparkles, RefreshCw, ShoppingBag, Instagram, Phone, Send, Lock, X, KeyRound, Headphones, MessageSquare, ArrowRightLeft, Users, Eye, Activity, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -87,6 +88,24 @@ export default function App() {
   const [isPasscodeModalOpen, setIsPasscodeModalOpen] = useState<boolean>(false);
   const [passcodeInput, setPasscodeInput] = useState<string>('');
   const [passcodeError, setPasscodeError] = useState<string>('');
+
+  // Live Visitor Analytics State
+  const [visitorStats, setVisitorStats] = useState<VisitorStats | null>(null);
+
+  useEffect(() => {
+    const page = currentView === 'admin' ? '/admin' : '/';
+    trackPageVisit(page).then((stats) => {
+      if (stats) setVisitorStats(stats);
+    });
+    sendHeartbeat(page);
+
+    const heartbeatInterval = setInterval(() => {
+      sendHeartbeat(page);
+      fetchVisitorStats().then((s) => s && setVisitorStats(s));
+    }, 40000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, [currentView]);
 
   // Initialize data on mount & detect view from URL search query (?view=admin or ?view=store)
   // Sync with central backend server
@@ -199,6 +218,21 @@ export default function App() {
 
       return hasChanges ? updatedCart : prevCart;
     });
+  }, [products]);
+
+  // Deep-link product handler from URL query params (e.g. ?product=STK-101 or ?id=...)
+  useEffect(() => {
+    if (products.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const productQuery = params.get('product') || params.get('id');
+    if (productQuery && !selectedProduct) {
+      const match = products.find(
+        (p) => p.id === productQuery || p.code === productQuery || p.id.includes(productQuery)
+      );
+      if (match) {
+        setSelectedProduct(match);
+      }
+    }
   }, [products]);
 
   const showToast = (msg: string) => {
@@ -316,7 +350,6 @@ export default function App() {
   // Admin Product Actions
   const handleSaveProduct = (product: Product) => {
     const updatedProd = { ...product, updatedAt: new Date().toISOString() };
-    removeDeletedProductId(product.id);
     setProducts((prev) => {
       const index = prev.findIndex((p) => p.id === product.id);
       let updated: Product[];
@@ -333,7 +366,6 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    addDeletedProductId(productId);
     deleteProductFromFirestore(productId);
     setProducts((prev) => {
       const updated = prev.filter((p) => p.id !== productId);
@@ -344,7 +376,6 @@ export default function App() {
   };
 
   const handleLoadDemoProducts = () => {
-    DEMO_PRODUCTS.forEach((p) => removeDeletedProductId(p.id));
     setProducts(DEMO_PRODUCTS);
     saveStoredProducts(DEMO_PRODUCTS);
     showToast('عینک‌های نمونه با موفقیت بارگذاری شدند');
@@ -352,7 +383,6 @@ export default function App() {
 
   // Order Actions & Automatic Stock Management
   const handleOrderCreated = (newOrder: Order) => {
-    removeDeletedOrderId(newOrder.id);
     // 1. Deduct quantity from product stock
     setProducts((prevProducts) => {
       const updatedProducts = prevProducts.map((p) => {
@@ -428,7 +458,6 @@ export default function App() {
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    addDeletedOrderId(orderId);
     deleteOrderFromFirestore(orderId);
     setOrders((prev) => {
       const updated = prev.filter((o) => o.id !== orderId);
@@ -842,24 +871,57 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <footer className="bg-zinc-950 border-t border-zinc-800/80 py-8 px-4 sm:px-6 mt-12 text-right dir-rtl text-xs text-zinc-500">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Glasses className="w-5 h-5 text-amber-400" />
-            <span className="font-bold text-zinc-300">فروشگاه عینک استوک جهانی ({settings.storeName})</span>
-            <span>— کلیه حقوق محفوظ است.</span>
+      <footer className="bg-zinc-950 border-t border-zinc-800/80 pt-10 pb-8 px-4 sm:px-6 mt-16 text-right dir-rtl text-xs text-zinc-400">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b border-zinc-800/80 pb-8">
+            {/* Col 1: About */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <Glasses className="w-5 h-5 text-amber-400" />
+                <span>فروشگاه عینک استوک {settings.storeName}</span>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                {settings.footerAboutText || settings.aboutText || 'فروشگاه تخصصی استوک جهانی واردکننده مستقیم عینک‌های اورجینال، فریم‌های کائوچویی و فلزی اروپایی با تضمین ۱۰۰٪ کیفیت و عدسی‌های استاندارد UV400.'}
+              </p>
+            </div>
+
+            {/* Col 2: Rules & Delivery */}
+            <div className="space-y-3">
+              <span className="text-white font-bold text-sm block">قوانین و ارسال سفارشات</span>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                {settings.rulesText || 'تمامی سفارش‌ها با پست پیشتاز سریع به سراسر ایران ارسال شده و کد رهگیری پستی ۲۴ رقمی برای خریدار ثبت می‌گردد.'}
+              </p>
+            </div>
+
+            {/* Col 3: Contact & Channels */}
+            <div className="space-y-3">
+              <span className="text-white font-bold text-sm block">ارتباط و پشتیبانی سریع</span>
+              <div className="flex flex-col gap-2">
+                {settings.phone && (
+                  <a href={`tel:${settings.phone}`} className="flex items-center gap-2 hover:text-amber-400 transition-colors">
+                    <Phone className="w-4 h-4 text-amber-400" />
+                    <span>تلفن تماس: <strong className="text-zinc-200 font-mono">{settings.phone}</strong></span>
+                  </a>
+                )}
+                {settings.instagram && (
+                  <a href={`https://instagram.com/${settings.instagram}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-amber-400 transition-colors">
+                    <Instagram className="w-4 h-4 text-pink-400" />
+                    <span>اینستاگرام: <strong className="text-zinc-200 font-mono">@{settings.instagram}</strong></span>
+                  </a>
+                )}
+                {settings.telegram && (
+                  <a href={`https://t.me/${settings.telegram}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-amber-400 transition-colors">
+                    <Send className="w-4 h-4 text-sky-400" />
+                    <span>تلگرام: <strong className="text-zinc-200 font-mono">@{settings.telegram}</strong></span>
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 text-zinc-400">
-            <a
-              href={`https://instagram.com/${settings.instagram}`}
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-amber-400 transition-colors flex items-center gap-1"
-            >
-              <Instagram className="w-4 h-4" />
-              <span>اینستاگرام: {settings.instagram}</span>
-            </a>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-zinc-500 pt-2 border-t border-zinc-800/60">
+            <span>© کلیه حقوق مادی و معنوی برای {settings.storeName} محفوظ است.</span>
+            <span className="text-zinc-600">طراحی شده برای فروش آنلاین عینک‌های استوک و اورجینال</span>
           </div>
         </div>
       </footer>
