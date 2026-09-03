@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { CartItem, Order, OrderCustomer, StoreSettings } from '../types';
 import { formatToman, generateOrderCode, fileToBase64, saveSingleOrder, DEFAULT_COUPONS, sendNtfyOrderAlert, checkProductStock, sendTelegramOrderNotification } from '../utils/storage';
+import { sound } from '../utils/audio';
+import { triggerLuxuryConfetti } from '../utils/confetti';
 import { 
   X, 
   CheckCircle2, 
@@ -18,7 +20,10 @@ import {
   Printer,
   MessageSquare,
   AlertCircle,
-  Tag
+  Tag,
+  MessageCircle,
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -138,6 +143,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
     setAppliedCouponCode(found.code);
     setDiscountAmount(calculatedDiscount);
+    sound.playSuccess();
+    triggerLuxuryConfetti();
     setCouponMessage({
       type: 'success',
       text: `کد تخفیف ${found.discountPercent}٪ با موفقیت اعمال شد (${formatToman(calculatedDiscount)} تخفیف).`
@@ -155,7 +162,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       try {
-        const base64 = await fileToBase64(file, 600, 0.60);
+        const base64 = await fileToBase64(file, 1800, 0.90);
         setReceiptImage(base64);
       } catch (err) {
         console.error('Error loading receipt:', err);
@@ -273,6 +280,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       sendTelegramOrderNotification(newOrder, settings);
       setCreatedOrder(newOrder);
       setIsSubmitting(false);
+      sound.playSuccess();
+      triggerLuxuryConfetti();
       setStep('success');
     } catch (err) {
       setIsSubmitting(false);
@@ -752,6 +761,37 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   <p>
                     پس از بررسی واریزی شما توسط مدیر، کد ۲۴ رقمی مرسوله پستی پیشتاز در بخش «پیگیری سفارشات» بالای سایت قرار می‌گیرد. با وارد کردن شماره موبایلتان می‌توانید آن را مشاهده کنید.
                   </p>
+                </div>
+
+                {/* WhatsApp & Telegram Quick Send to Store Admin */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <button
+                    onClick={() => {
+                      if (!createdOrder) return;
+                      const itemsText = createdOrder.items
+                        .map((i) => `• ${i.product.title} (${i.quantity} عدد)`)
+                        .join('\n');
+                      const msg = `سلام! سفارش جدید در سایت ثبت کردم:\nکد سفارش: ${createdOrder.orderCode}\nنام: ${createdOrder.customer.fullName}\nتلفن: ${createdOrder.customer.phone}\nآدرس: ${createdOrder.customer.province} - ${createdOrder.customer.city} - ${createdOrder.customer.address}\nمبلغ کل: ${formatToman(createdOrder.finalAmount)}\n\nمحصولات:\n${itemsText}`;
+                      const rawNum = settings?.whatsappNumber || storePhone || '09120000000';
+                      let clean = rawNum.replace(/\D/g, '');
+                      if (clean.startsWith('09')) clean = '98' + clean.slice(1);
+                      else if (clean.startsWith('9') && clean.length === 10) clean = '98' + clean;
+                      const url = `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="w-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 p-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4 text-emerald-400" />
+                    <span>ارسال مشخصات به واتساپ ادمین</span>
+                  </button>
+
+                  <button
+                    onClick={sendToTelegram}
+                    className="w-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 p-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Send className="w-4 h-4 text-sky-400" />
+                    <span>ارسال مشخصات به تلگرام ادمین</span>
+                  </button>
                 </div>
 
                 {/* Invoice Receipt & Close Buttons */}

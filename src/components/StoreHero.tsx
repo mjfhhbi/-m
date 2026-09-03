@@ -1,14 +1,19 @@
 import React from 'react';
-import { Glasses, Sparkles, ShieldCheck, Truck, Headphones, Award, Sun, CheckCircle2 } from 'lucide-react';
+import { Glasses, Sparkles, ShieldCheck, Truck, Headphones, Award, Sun, CheckCircle2, Smile, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { StoreSettings } from '../types';
+import { sound } from '../utils/audio';
 
 interface StoreHeroProps {
   settings?: StoreSettings;
+  onOpenFaceGuide?: () => void;
 }
 
-export const StoreHero: React.FC<StoreHeroProps> = ({ settings }) => {
-  const badgeText = settings?.heroBadgeText || '✨ کالکشن جدید ۲۰۲۶ - کیفیت اورجینال';
+export const StoreHero: React.FC<StoreHeroProps> = ({ 
+  settings,
+  onOpenFaceGuide
+}) => {
+  const badgeText = settings?.heroBadgeText || '✨ کالکشن جدید ۲۰۲۶ - کیفیت اورجینال اروپایی';
   const headline = settings?.heroTitle || settings?.welcomeText || 'تجربه‌ای متفاوت از کیفیت و استایل با عینک استوک جهانی';
   const subtext = settings?.heroSubtitle || settings?.welcomeSubtext || 'مجموعه کامل عینک‌های آفتابی و طبی اورجینال، فریم‌های استوک کائوچویی و فلزی ساخت اروپا با عدسی‌های پلاریزه و استاندارد کامل UV400.';
 
@@ -33,16 +38,23 @@ export const StoreHero: React.FC<StoreHeroProps> = ({ settings }) => {
 
       <div className="relative z-10 max-w-4xl space-y-5">
         
-        {/* Badge */}
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500/15 to-amber-500/5 border border-amber-500/40 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full shadow-inner"
-        >
-          <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '8s' }} />
-          <span>{badgeText}</span>
-        </motion.div>
+        {/* Top Badges */}
+        <div className="flex flex-wrap items-center gap-2">
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500/15 to-amber-500/5 border border-amber-500/40 text-amber-300 text-xs font-bold px-4 py-1.5 rounded-full shadow-inner"
+          >
+            <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '8s' }} />
+            <span>{badgeText}</span>
+          </motion.div>
+
+          <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold px-3 py-1.5 rounded-full">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>تست شده با دستگاه UV سنج</span>
+          </span>
+        </div>
 
         {/* Hero Title */}
         <motion.h1
@@ -63,6 +75,23 @@ export const StoreHero: React.FC<StoreHeroProps> = ({ settings }) => {
         >
           {subtext}
         </motion.p>
+
+        {/* Call to Action Interactive Buttons */}
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          {onOpenFaceGuide && (
+            <button
+              onClick={() => {
+                sound.playPop();
+                onOpenFaceGuide();
+              }}
+              className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-black text-xs sm:text-sm px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-amber-500/25 transition-all active:scale-95"
+            >
+              <Smile className="w-4 h-4 text-zinc-950" />
+              <span>راهنمای انتخاب عینک مناسب فرم صورت</span>
+              <ArrowLeft className="w-4 h-4 mr-1" />
+            </button>
+          )}
+        </div>
 
         {/* 4 Features Grid with interactive animations */}
         <motion.div

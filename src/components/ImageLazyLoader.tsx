@@ -26,12 +26,10 @@ export const ImageLazyLoader: React.FC<ImageLazyLoaderProps> = ({
   referrerPolicy = 'no-referrer',
   onClick,
 }) => {
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [retryCount, setRetryCount] = useState<number>(0);
 
   useEffect(() => {
-    setIsLoaded(false);
     setHasError(false);
   }, [src, retryCount]);
 
@@ -49,7 +47,6 @@ export const ImageLazyLoader: React.FC<ImageLazyLoaderProps> = ({
   const handleRetry = (e: React.MouseEvent) => {
     e.stopPropagation();
     setHasError(false);
-    setIsLoaded(false);
     setRetryCount((prev) => prev + 1);
   };
 
@@ -59,20 +56,12 @@ export const ImageLazyLoader: React.FC<ImageLazyLoaderProps> = ({
       style={{ aspectRatio }}
       className={`relative overflow-hidden bg-zinc-950/80 flex items-center justify-center select-none ${className}`}
     >
-      {/* Skeleton Blur Placeholder */}
-      {!isLoaded && !hasError && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900/90 animate-pulse">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-zinc-800/40 to-transparent animate-shimmer" />
-          <Glasses className="w-8 h-8 text-zinc-700/60 animate-bounce" />
-        </div>
-      )}
-
       {/* Error Fallback Container */}
       {hasError ? (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 bg-zinc-900/90 text-zinc-500 gap-2">
           <Glasses className="w-8 h-8 text-amber-500/50 stroke-[1.5]" />
           <span className="text-[11px] text-zinc-400 font-medium text-center">
-            بارگذاری تصویر ناموفق بود
+            تصویر یافت نشد
           </span>
           <button
             onClick={handleRetry}
@@ -84,18 +73,13 @@ export const ImageLazyLoader: React.FC<ImageLazyLoaderProps> = ({
         </div>
       ) : (
         <img
-          src={retryCount > 0 ? `${src}?retry=${retryCount}` : src}
+          src={retryCount > 0 && src.startsWith('http') ? `${src}${src.includes('?') ? '&' : '?'}retry=${retryCount}` : src}
           alt={alt}
           loading={priority ? 'eager' : 'lazy'}
           decoding="async"
           referrerPolicy={referrerPolicy}
-          onLoad={() => setIsLoaded(true)}
           onError={() => setHasError(true)}
-          className={`w-full h-full ${fitClass} ${zoomClass} ${imgClassName} transition-all duration-500 ease-out ${
-            isLoaded
-              ? 'opacity-100 filter-none scale-100'
-              : 'opacity-0 blur-md scale-105'
-          }`}
+          className={`w-full h-full ${fitClass} ${zoomClass} ${imgClassName} transition-transform duration-500 ease-out`}
         />
       )}
     </div>

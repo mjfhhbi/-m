@@ -79,6 +79,13 @@ export interface Order {
   updatedAt?: string;
 }
 
+export interface FaqItemSetting {
+  id: string;
+  question: string;
+  answer: string;
+  iconType?: string;
+}
+
 export interface StoreSettings {
   storeName: string;
   tagline: string;
@@ -104,6 +111,17 @@ export interface StoreSettings {
   footerAboutText?: string;
   categories?: CategoryItem[];
   coupons?: CouponCode[];
+  faqs?: FaqItemSetting[];
+  managerEmail?: string;
+  showIntroSplash?: boolean;
+  splashBadgeText?: string;
+  splashTitle?: string;
+  splashSubtitle?: string;
+  splashButtonText?: string;
+  splashDurationMs?: number;
+  whatsappNumber?: string;
+  supportTelegram?: string;
+  enableSoundEffects?: boolean;
   instagram: string;
   telegram?: string;
   telegramBotToken?: string;
@@ -140,6 +158,18 @@ export interface StoreSettings {
   showVisitorCounterInFooter?: boolean;
   updatedAt?: string;
 }
+
+export interface CustomerReview {
+  id: string;
+  productId: string;
+  customerName: string;
+  rating: number; // 1 to 5
+  comment: string;
+  isVerifiedPurchase?: boolean;
+  createdAt: string;
+}
+
+export type FaceShapeType = 'all' | 'oval' | 'round' | 'square' | 'rectangle' | 'heart' | 'diamond';
 
 export interface VisitLog {
   id: string;

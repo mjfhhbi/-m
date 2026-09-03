@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
 import { formatToman } from '../utils/storage';
-import { ShoppingBag, Eye, Edit, Trash2, Shield, Glasses, Check, Sparkles, Image as ImageIcon, ArrowRightLeft, Share2, Send, Copy } from 'lucide-react';
+import { ShoppingBag, Eye, Edit, Trash2, Shield, Glasses, Check, Sparkles, Image as ImageIcon, ArrowRightLeft, Share2, Send, Copy, Heart, Star, Sparkle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ImageLazyLoader } from './ImageLazyLoader';
+import { sound } from '../utils/audio';
 
 interface ProductCardProps {
   product: Product;
@@ -16,6 +17,8 @@ interface ProductCardProps {
   onToggleCompare?: (p: Product) => void;
   onQuickView?: (p: Product) => void;
   revealDelay?: number;
+  isWishlisted?: boolean;
+  onToggleWishlist?: (p: Product) => void;
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -29,6 +32,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onToggleCompare,
   onQuickView,
   revealDelay = 0,
+  isWishlisted = false,
+  onToggleWishlist,
 }) => {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const [added, setAdded] = useState(false);
@@ -39,6 +44,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
+    sound.playCartAdd();
     onAddToCart(product);
     setAdded(true);
     setTimeout(() => setAdded(false), 1800);
@@ -46,6 +52,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const handleShareProduct = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    sound.playPop();
     const productUrl = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.id)}`;
     const shareTitle = product.seoTitle || product.title;
     const shareText = `👓 ${product.title}\n💰 قیمت: ${formatToman(product.price)}\n🛡️ محافظت: ${product.uvProtection || 'UV400'}\n✨ فریم: ${product.frameType || 'استوک'}\n\nمشاهده و سفارش آنلاین:`;
@@ -69,7 +76,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       setSharedToast(true);
       setTimeout(() => setSharedToast(false), 2400);
     } catch (err) {
-      // Direct prompt fallback
       setSharedToast(true);
       setTimeout(() => setSharedToast(false), 2400);
     }
@@ -122,15 +128,43 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Badges Over Image */}
         <div className="absolute top-2.5 right-2.5 flex flex-col gap-1.5 items-end z-10">
-          {product.uvProtection && (
-            <span className="inline-flex items-center gap-1 bg-zinc-950/85 backdrop-blur-md text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30 shadow-md">
-              <Shield className="w-3 h-3 text-amber-400" />
-              <span>{product.uvProtection}</span>
-            </span>
-          )}
+          <div className="flex items-center gap-1.5">
+            {onToggleWishlist && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  sound.playWishlist();
+                  onToggleWishlist(product);
+                }}
+                className={`p-1.5 rounded-full backdrop-blur-md transition-all shadow-md ${
+                  isWishlisted
+                    ? 'bg-rose-500/90 text-white fill-white'
+                    : 'bg-zinc-950/70 text-zinc-400 hover:text-rose-400 hover:bg-zinc-900 border border-zinc-800'
+                }`}
+                title={isWishlisted ? 'حذف از نشان‌شده‌ها' : 'نشان کردن عینک'}
+              >
+                <Heart className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-white' : ''}`} />
+              </button>
+            )}
+
+            {product.uvProtection && (
+              <span className="inline-flex items-center gap-1 bg-zinc-950/85 backdrop-blur-md text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30 shadow-md">
+                <Shield className="w-3 h-3 text-amber-400" />
+                <span>{product.uvProtection}</span>
+              </span>
+            )}
+          </div>
+
           {discountPercent > 0 && (
             <span className="inline-flex items-center gap-1 bg-gradient-to-r from-rose-600 to-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg shadow-rose-600/30 animate-pulse">
               <span>%{discountPercent} تخفیف</span>
+            </span>
+          )}
+
+          {product.stock <= 2 && product.stock > 0 && (
+            <span className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-300 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-amber-500/30 shadow-sm backdrop-blur-md">
+              <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+              <span>فقط {product.stock} عدد باقی مانده</span>
             </span>
           )}
         </div>
@@ -141,7 +175,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {product.code || 'STK'}
           </span>
           
-          {/* Share Button (Web Share API / Telegram / Instagram) */}
+          {/* Share Button */}
           <button
             onClick={handleShareProduct}
             className="p-1.5 rounded-md text-[10px] font-medium flex items-center justify-center transition-all backdrop-blur-md border bg-zinc-900/80 text-zinc-400 hover:text-amber-400 hover:border-amber-500/40 hover:bg-zinc-800 border-zinc-800 shadow-sm"
@@ -154,6 +188,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                sound.playPop();
                 onToggleCompare(product);
               }}
               className={`px-2 py-0.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-all backdrop-blur-md border ${
@@ -172,6 +207,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                sound.playPop();
                 onQuickView(product);
               }}
               className="px-2 py-0.5 rounded-md text-[10px] font-medium flex items-center gap-1 transition-all backdrop-blur-md border bg-zinc-900/80 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 border-zinc-800 shadow-sm"
@@ -197,24 +233,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Quick View Hover Overlay for Customers (Digikala Style) */}
-        {!isAdmin && onQuickView && (
-          <div className="absolute inset-0 bg-zinc-950/50 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center backdrop-blur-[2px] z-10 pointer-events-none group-hover:pointer-events-auto">
-            <motion.button
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onQuickView(product);
-              }}
-              className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-extrabold text-xs px-4 py-2 rounded-xl shadow-xl flex items-center gap-1.5 transition-all"
-            >
-              <Eye className="w-4 h-4" />
-              <span>مشاهده سریع مشخصات</span>
-            </motion.button>
-          </div>
-        )}
 
         {/* Multiple Images Dots Indicator */}
         {hasImages && product.images.length > 1 && (
@@ -269,12 +287,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Card Details Body */}
       <div className="p-4 flex-1 flex flex-col justify-between space-y-3 text-right">
         <div>
-          {/* Tags bar */}
+          {/* Tags & Rating bar */}
           <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5">
             <span className="text-amber-400/90 font-medium">{product.frameType || 'فریم استوک'}</span>
-            <span className="bg-zinc-800/80 px-2 py-0.5 rounded text-[10px] text-zinc-300">
-              {product.gender || 'اسپرت'}
-            </span>
+            <div className="flex items-center gap-1 bg-zinc-900 px-2 py-0.5 rounded-md border border-zinc-800">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              <span className="text-[10px] text-amber-300 font-bold font-mono">5.0</span>
+            </div>
           </div>
 
           <h3 className="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-amber-400 transition-colors">
@@ -336,3 +355,4 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     </motion.div>
   );
 };
+

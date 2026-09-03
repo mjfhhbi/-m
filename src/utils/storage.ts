@@ -58,7 +58,6 @@ export const DEFAULT_CATEGORIES: CategoryItem[] = [
   { id: 'optical', label: 'عینک طبی' },
   { id: 'sport', label: 'ورزشی و اسپرت' },
   { id: 'unisex', label: 'یونی‌سکس' },
-  { id: 'accessories', label: 'لوازم جانبی' },
 ];
 
 export const DEFAULT_COUPONS: CouponCode[] = [
@@ -77,6 +76,34 @@ export const DEFAULT_COUPONS: CouponCode[] = [
     minOrderAmount: 1000000,
     isActive: true,
     createdAt: new Date().toISOString(),
+  },
+];
+
+export const DEFAULT_FAQS: { id: string; question: string; answer: string; iconType?: string }[] = [
+  {
+    id: 'faq-1',
+    question: 'عینک استوک چیست و چه تفاوتی با عینک‌های فیک و های‌کپی دارد؟',
+    answer: 'عینک‌های استوک (Stock Eyewear) محصولات اورجینال مازاد تولید کمپانی‌های معتبر اروپایی و بین‌المللی هستند که به دلیل تغییر کالکشن فصلی با قیمتی بسیار مناسب‌تر از نمایندگی‌های اصلی عرضه می‌شوند. برخلاف مدل‌های فیک یا های‌کپی که از پلاستیک بازیافتی و طلق‌های بی‌کیفیت ساخته می‌شوند، این عینک‌ها دارای فریم‌های مرغوب کائوچویی (استات)، لولاهای فلزی فنردار بادوام و عدسی‌های استاندارد جهانی هستند.',
+  },
+  {
+    id: 'faq-2',
+    question: 'چگونه از استاندارد UV400 و پلاریزه بودن عدسی عینک‌ها مطمئن شوم؟',
+    answer: 'تمامی عینک‌های فروشگاه stock_jahani قبل از بارگذاری و ارسال توسط دستگاه‌های تخصصی UVسنج اپتومتری بررسی می‌شوند و تضمین ۱۰۰٪ فیلتراسیون امواج مضر UVA و UVB تا ۴۰۰ نانومتر را دارند. همچنین برای عینک‌های پلاریزه، به همراه سفارش کارت مخصوص تست پلاریزه ارسال می‌گردد که با نگاه کردن از پشت عینک تصویر مخفی نمایان می‌شود.',
+  },
+  {
+    id: 'faq-3',
+    question: 'شرایط بسته‌بندی و ارسال به شهرستان‌ها چگونه است؟',
+    answer: 'همه عینک‌ها درون یک هاردکیس (قاب ضدضربه مقاوم) به همراه دستمال مایکروفایبر نانو بسته‌بندی شده و با پُست پیشتاز سریع به سراسر ایران ارسال می‌شوند. بسته شما بیمه کامل پستی دارد و کد رهگیری ۲۴ رقمی پستی در بخش «پیگیری سفارشات» و از طریق پیامک در اختیار شما قرار خواهد گرفت.',
+  },
+  {
+    id: 'faq-4',
+    question: 'مهلت تست و ضمانت بازگشت کالا (گارانتی ۷ روزه) چگونه است؟',
+    answer: 'شما تا ۷ روز پس از دریافت بسته مهلت دارید عینک را روی صورت خود تست کنید و در صورت وجود هرگونه عدم تطابق با مشخصات، عدم رضایت از سایز یا ایراد فنی در فریم و عدسی، بدون هیچ قید و شرطی کالا را مرجوع نموده و وجه خود را فوراً دریافت نمایید.',
+  },
+  {
+    id: 'faq-5',
+    question: 'آیا امکان تعویض عدسی با نمره طبی شخصی وجود دارد؟',
+    answer: 'بله، تمامی فریم‌های طبی و اکثر فریم‌های کائوچویی آفتابی استاندارد دارای پیچ شیاردار یا ساختار استاندارد هستند و شما می‌توانید در هر مرکز بینایی‌سنجی و عینک‌سازی، عدسی طبی مورد نظر خود را روی فریم سوار کنید.',
   },
 ];
 
@@ -105,6 +132,17 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   footerAboutText: 'فروشگاه تخصصی stock_jahani واردکننده و ارائه‌دهنده فریم‌های باکیفیت و خاص با مناسب‌ترین قیمت.',
   categories: DEFAULT_CATEGORIES,
   coupons: DEFAULT_COUPONS,
+  faqs: DEFAULT_FAQS,
+  managerEmail: 'matinjahanbani2024@gmail.com',
+  showIntroSplash: true,
+  splashBadgeText: 'عینک‌های اورجینال استوک اروپا',
+  splashTitle: 'فروشگاه عینک استوک جهانی',
+  splashSubtitle: 'تضمین اصالت فریم، عدسی‌های پلاریزه و UV400 با ارسال فوری و بسته‌بندی هاردکیس',
+  splashButtonText: 'ورود به ویترین فروشگاه',
+  splashDurationMs: 2200,
+  whatsappNumber: '09120000000',
+  supportTelegram: 'stock_jahani',
+  enableSoundEffects: true,
   instagram: 'stock_jahani',
   phone: '09120000000',
   address: 'تهران، خیابان ولیعصر، مرکز خرید عینک استوک جهانی',
@@ -124,6 +162,105 @@ export const DEFAULT_SETTINGS: StoreSettings = {
 
 // Ready sample products if user requests demo items
 export const DEMO_PRODUCTS: Product[] = [];
+
+// Curated high quality glasses preset images for quick selection
+export const GLASSES_IMAGE_PRESETS = [
+  {
+    name: 'خلبانی کلاسیک Ray-Ban Aviator',
+    url: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&auto=format&fit=crop&q=80',
+    category: 'sunglasses'
+  },
+  {
+    name: 'ویفرر مشکی مات Wayfarer',
+    url: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&auto=format&fit=crop&q=80',
+    category: 'sunglasses'
+  },
+  {
+    name: 'کلاب مستر طلایی مشکی Clubmaster',
+    url: 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=800&auto=format&fit=crop&q=80',
+    category: 'sunglasses'
+  },
+  {
+    name: 'فریم طبی گرد وینتیج Vintage Round',
+    url: 'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=800&auto=format&fit=crop&q=80',
+    category: 'optical'
+  },
+  {
+    name: 'فریم طبی مستطیلی کائوچویی Square Acetate',
+    url: 'https://images.unsplash.com/photo-1577803645773-f96470509666?w=800&auto=format&fit=crop&q=80',
+    category: 'optical'
+  },
+  {
+    name: 'عینک اسپرت و ورزشی پلی‌کربنات Sport Shield',
+    url: 'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=800&auto=format&fit=crop&q=80',
+    category: 'sport'
+  }
+];
+
+/**
+ * Robustly parses any Persian, Arabic, or English numeric input with or without commas.
+ */
+export function parseNumberInput(val: string | number | undefined | null): number {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : Math.max(0, Math.floor(val));
+  
+  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  
+  let clean = String(val);
+  for (let i = 0; i < 10; i++) {
+    clean = clean.replaceAll(persianDigits[i], String(i));
+    clean = clean.replaceAll(arabicDigits[i], String(i));
+  }
+  // Strip out commas, persian commas, spaces, currency symbols, and non-digits
+  clean = clean.replace(/[^0-9]/g, '');
+  const num = parseInt(clean, 10);
+  return isNaN(num) ? 0 : Math.max(0, num);
+}
+
+/**
+ * Converts a Toman number into readable Persian verbal words.
+ */
+export function tomanToWords(amount: number): string {
+  if (!amount || amount <= 0) return 'صفر تومان';
+  
+  const ones = ['', 'یک', 'دو', 'سه', 'چهار', 'پنج', 'شش', 'هفت', 'هشت', 'نه'];
+  const teens = ['ده', 'یازده', 'دوازده', 'سیزده', 'چهارده', 'پانزده', 'شانزده', 'هفده', 'هجده', 'نوزده'];
+  const tens = ['', '', 'بیست', 'سی', 'چهل', 'پنجاه', 'شصت', 'هفتاد', 'هشتاد', 'نود'];
+  const hundreds = ['', 'یکصد', 'دویست', 'سیصد', 'چهارصد', 'پانصد', 'ششصد', 'هفتصد', 'هشتصد', 'نهصد'];
+  
+  function convertGroup(n: number): string {
+    const parts: string[] = [];
+    const h = Math.floor(n / 100);
+    const remainder = n % 100;
+    
+    if (h > 0) parts.push(hundreds[h]);
+    
+    if (remainder >= 10 && remainder < 20) {
+      parts.push(teens[remainder - 10]);
+    } else {
+      const t = Math.floor(remainder / 10);
+      const o = remainder % 10;
+      if (t > 0) parts.push(tens[t]);
+      if (o > 0) parts.push(ones[o]);
+    }
+    
+    return parts.join(' و ');
+  }
+  
+  const billions = Math.floor(amount / 1000000000);
+  const millions = Math.floor((amount % 1000000000) / 1000000);
+  const thousands = Math.floor((amount % 1000000) / 1000);
+  const units = amount % 1000;
+  
+  const sections: string[] = [];
+  if (billions > 0) sections.push(`${convertGroup(billions)} میلیارد`);
+  if (millions > 0) sections.push(`${convertGroup(millions)} میلیون`);
+  if (thousands > 0) sections.push(`${convertGroup(thousands)} هزار`);
+  if (units > 0) sections.push(convertGroup(units));
+  
+  return (sections.join(' و ') || 'صفر') + ' تومان';
+}
 
 function cleanForFirestore<T>(data: T): T {
   if (data === undefined || data === null) return data;
@@ -161,6 +298,48 @@ export function getStoredProducts(): Product[] {
     console.error('Error reading products:', err);
     return [];
   }
+}
+
+export async function saveSingleProduct(product: Product): Promise<boolean> {
+  if (!product || !product.id) return false;
+  
+  const cleanP = { ...product, updatedAt: new Date().toISOString() };
+  
+  // 1. Update local storage
+  try {
+    const current = getStoredProducts();
+    const idx = current.findIndex((p) => p.id === product.id);
+    let updated: Product[];
+    if (idx >= 0) {
+      updated = [...current];
+      updated[idx] = cleanP;
+    } else {
+      updated = [cleanP, ...current];
+    }
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(updated));
+    notifyTabsOfChange();
+  } catch (e) {
+    console.error('Error updating localStorage for product:', e);
+  }
+  
+  // 2. Send to Express API
+  const apiPromise = fetch('/api/products/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product: cleanP }),
+  }).catch(() => {});
+  
+  // 3. Send to Firestore
+  const fsPromise = (async () => {
+    try {
+      await setDoc(doc(db, 'products', cleanP.id), cleanForFirestore(cleanP));
+    } catch (e) {
+      console.warn('Firestore single setDoc notice:', e);
+    }
+  })();
+  
+  await Promise.allSettled([apiPromise, fsPromise]);
+  return true;
 }
 
 export async function saveStoredProducts(products: Product[]): Promise<boolean> {
@@ -264,23 +443,24 @@ function parseTimestamp(dateStr?: string): number {
 
 export function mergeSettingsObjects(...settingsList: (StoreSettings | null | undefined)[]): StoreSettings {
   let result: StoreSettings = { ...DEFAULT_SETTINGS };
-  let newestTimestamp = 0;
 
   for (const s of settingsList) {
     if (!s || typeof s !== 'object') continue;
-    const sTime = parseTimestamp(s.updatedAt);
-    if (sTime >= newestTimestamp) {
-      newestTimestamp = sTime;
-      result = { ...result, ...s };
-    } else {
-      result = { ...s, ...result };
-    }
+    result = {
+      ...result,
+      ...s,
+      // If the incoming settings object has explicit categories, use them directly
+      categories: Array.isArray(s.categories) && s.categories.length > 0 ? s.categories : result.categories,
+      coupons: Array.isArray(s.coupons) ? s.coupons : result.coupons,
+      faqs: Array.isArray(s.faqs) && s.faqs.length > 0 ? s.faqs : result.faqs,
+    };
   }
 
   return result;
 }
 
 export function mergeProductsList(...lists: Product[][]): Product[] {
+  // If the primary server list exists and is non-empty or explicitly set, respect it
   const map = new Map<string, Product>();
   for (const list of lists) {
     if (!Array.isArray(list)) continue;
@@ -294,8 +474,6 @@ export function mergeProductsList(...lists: Product[][]): Product[] {
         const newTime = parseTimestamp(prod.updatedAt || prod.createdAt);
         if (newTime >= existingTime) {
           map.set(prod.id, { ...existing, ...prod });
-        } else {
-          map.set(prod.id, { ...prod, ...existing });
         }
       }
     }
@@ -552,7 +730,7 @@ export async function deleteOrderFromFirestore(orderId: string): Promise<boolean
   return true;
 }
 
-// Fetch and merge all shared data from Express Server API, Firestore, and LocalStorage
+// Fetch authoritative shared data from Express Server API and Firestore, with local storage cache fallback
 export async function fetchServerData(): Promise<{ products: Product[]; orders: Order[]; settings: StoreSettings }> {
   let apiProducts: Product[] | null = null;
   let apiOrders: Order[] | null = null;
@@ -562,37 +740,41 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
   let fsOrders: Order[] | null = null;
   let fsSettings: StoreSettings | null = null;
 
-  // 1. Fetch from Express Server API (Primary fast source)
-  try {
-    const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data) {
-        if (Array.isArray(data.products)) apiProducts = data.products;
-        if (Array.isArray(data.orders)) apiOrders = data.orders;
-        if (data.settings && typeof data.settings === 'object') apiSettings = data.settings;
+  // 1. Fetch from Express Server API (Primary ultra-fast source ~10ms)
+  const apiFetchPromise = (async () => {
+    try {
+      const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data) {
+          if (Array.isArray(data.products)) apiProducts = data.products;
+          if (Array.isArray(data.orders)) apiOrders = data.orders;
+          if (data.settings && typeof data.settings === 'object') apiSettings = data.settings;
+        }
       }
+    } catch (e) {
+      console.warn('Express API fetch notice:', e);
     }
-  } catch (e) {
-    console.warn('Express API fetch notice:', e);
-  }
+  })();
 
-  // 2. Fetch from Firestore asynchronously
-  const remoteSync = withTimeout(
-    Promise.all([
-      getDocs(collection(db, 'orders')).catch((err) => {
-        handleFirestoreError(err, OperationType.LIST, 'orders');
-        return null;
-      }),
-      getDocs(collection(db, 'products')).catch((err) => {
-        handleFirestoreError(err, OperationType.LIST, 'products');
-        return null;
-      }),
-      getDoc(doc(db, 'settings', 'store_settings')).catch((err) => {
-        handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
-        return null;
-      }),
-    ]).then(([ordersSnap, productsSnap, settingsDoc]) => {
+  // 2. Fetch from Firestore concurrently (non-blocking)
+  const firestoreFetchPromise = (async () => {
+    try {
+      const [ordersSnap, productsSnap, settingsDoc] = await Promise.all([
+        getDocs(collection(db, 'orders')).catch((err) => {
+          handleFirestoreError(err, OperationType.LIST, 'orders');
+          return null;
+        }),
+        getDocs(collection(db, 'products')).catch((err) => {
+          handleFirestoreError(err, OperationType.LIST, 'products');
+          return null;
+        }),
+        getDoc(doc(db, 'settings', 'store_settings')).catch((err) => {
+          handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
+          return null;
+        }),
+      ]);
+
       if (ordersSnap) {
         fsOrders = [];
         ordersSnap.forEach((d) => d.exists() && fsOrders!.push(d.data() as Order));
@@ -604,34 +786,46 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
       if (settingsDoc && settingsDoc.exists()) {
         fsSettings = settingsDoc.data() as StoreSettings;
       }
-    }),
-    3000
-  ).catch(() => {});
+    } catch (e) {}
+  })();
 
-  await withTimeout(remoteSync, 3000).catch(() => {});
-
-  // Authoritative determination: server API > Firestore > LocalStorage
-  let products: Product[] = [];
-  if (apiProducts !== null) {
-    products = apiProducts.filter((p) => p && p.id);
-  } else if (fsProducts !== null) {
-    products = fsProducts.filter((p) => p && p.id);
-  } else {
-    products = getStoredProducts().filter((p) => p && p.id);
+  // Wait for the fast API response first, or max 800ms for Firestore if API is unavailable
+  await withTimeout(apiFetchPromise, 800).catch(() => {});
+  if (apiProducts === null) {
+    await withTimeout(firestoreFetchPromise, 800).catch(() => {});
   }
 
-  let orders: Order[] = [];
-  if (apiOrders !== null) {
-    orders = apiOrders.filter((o) => o && o.id);
-  } else if (fsOrders !== null) {
-    orders = fsOrders.filter((o) => o && o.id);
-  } else {
-    orders = getStoredOrders().filter((o) => o && o.id);
-  }
-
+  const localProducts = getStoredProducts().filter((p) => p && p.id);
+  const localOrders = getStoredOrders().filter((o) => o && o.id);
   const localSettings = getStoredSettings();
-  const settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings, apiSettings);
 
+  // Authoritative remote selection
+  let products: Product[];
+  if (apiProducts !== null) {
+    products = apiProducts;
+  } else if (fsProducts !== null) {
+    products = fsProducts;
+  } else {
+    products = localProducts;
+  }
+
+  let orders: Order[];
+  if (apiOrders !== null) {
+    orders = apiOrders;
+  } else if (fsOrders !== null) {
+    orders = fsOrders;
+  } else {
+    orders = localOrders;
+  }
+
+  let settings: StoreSettings;
+  if (apiSettings !== null || fsSettings !== null) {
+    settings = mergeSettingsObjects(DEFAULT_SETTINGS, fsSettings, apiSettings);
+  } else {
+    settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings);
+  }
+
+  // Update local cache so it matches the authoritative state instantly
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
@@ -833,8 +1027,9 @@ export function notifyTabsOfChange() {
   }
 }
 
-export function fileToBase64(file: File, maxWidth = 600, quality = 0.60): Promise<string> {
+export function fileToBase64(file: File, maxWidth = 2048, quality = 0.92): Promise<string> {
   return new Promise((resolve, reject) => {
+    // If the file is already reasonably sized (< 2MB), keep original data url for 100% lossless clarity
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (e) => {
@@ -843,23 +1038,34 @@ export function fileToBase64(file: File, maxWidth = 600, quality = 0.60): Promis
         resolve(dataUrl);
         return;
       }
+
+      // If file is under 1.8MB, directly resolve original lossless image
+      if (file.size <= 1.8 * 1024 * 1024) {
+        resolve(dataUrl);
+        return;
+      }
+
       const img = new Image();
       img.src = dataUrl;
       img.onload = () => {
-        const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
 
-        if (width > maxWidth || height > maxWidth) {
-          if (width > height) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          } else {
-            width = Math.round((width * maxWidth) / height);
-            height = maxWidth;
-          }
+        if (width <= maxWidth && height <= maxWidth) {
+          // No downscaling needed
+          resolve(dataUrl);
+          return;
         }
 
+        if (width > height) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        } else {
+          width = Math.round((width * maxWidth) / height);
+          height = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
@@ -867,8 +1073,14 @@ export function fileToBase64(file: File, maxWidth = 600, quality = 0.60): Promis
           resolve(dataUrl);
           return;
         }
+
+        // Enable high-quality smoothing for sharp textures and clean frames
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+
+        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const compressedBase64 = canvas.toDataURL(mimeType, quality);
         resolve(compressedBase64);
       };
       img.onerror = () => resolve(dataUrl);
@@ -1148,4 +1360,157 @@ export function sendHeartbeat(page: string = '/') {
     }).catch(() => {});
   } catch (e) {}
 }
+
+/**
+ * Strips dangerous HTML tags and script injections for robust security.
+ */
+export function sanitizeTextInput(input: string | null | undefined): string {
+  if (!input) return '';
+  return String(input)
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .trim();
+}
+
+export const WISHLIST_KEY = 'stock_jahani_wishlist_v1';
+export const REVIEWS_KEY = 'stock_jahani_reviews_v1';
+
+export function getStoredWishlist(): string[] {
+  try {
+    const raw = localStorage.getItem(WISHLIST_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export const getWishlistIds = getStoredWishlist;
+
+export function saveStoredWishlist(ids: string[]) {
+  try {
+    localStorage.setItem(WISHLIST_KEY, JSON.stringify(ids));
+  } catch (e) {}
+}
+
+export const saveWishlistIds = saveStoredWishlist;
+
+export function isProductInWishlist(productId: string): boolean {
+  const list = getStoredWishlist();
+  return list.includes(productId);
+}
+
+export function toggleWishlistId(productId: string): string[] {
+  const current = getStoredWishlist();
+  const exists = current.includes(productId);
+  let updated: string[];
+  if (exists) {
+    updated = current.filter((id) => id !== productId);
+  } else {
+    updated = [...current, productId];
+  }
+  saveStoredWishlist(updated);
+  return updated;
+}
+
+export function toggleWishlistProduct(productId: string): { inWishlist: boolean; total: number } {
+  const current = getStoredWishlist();
+  const exists = current.includes(productId);
+  const updated = toggleWishlistId(productId);
+  return { inWishlist: !exists, total: updated.length };
+}
+
+export const DEFAULT_CUSTOMER_REVIEWS: Array<{
+  id: string;
+  productId: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+  isVerifiedPurchase: boolean;
+  createdAt: string;
+}> = [
+  {
+    id: 'rev-1',
+    productId: 'all',
+    customerName: 'رضا کمالی (تهران)',
+    rating: 5,
+    comment: 'کیفیت فریم عینک واقعاً فوق‌العاده است. عدسی پلاریزه‌اش موقع رانندگی در آفتاب شدید عالی عمل کرد. بسته‌بندی هاردکیس هم کاملاً ضدضربه بود.',
+    isVerifiedPurchase: true,
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'rev-2',
+    productId: 'all',
+    customerName: 'مریم صالحی (اصفهان)',
+    rating: 5,
+    comment: 'عینک دستم رسید، دقیقاً مثل عکس و حتی تمیزتر و شیک‌تر. استاندارد UV400 رو پیش اپتومتریست تست کردم کاملاً تایید شد.',
+    isVerifiedPurchase: true,
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+  {
+    id: 'rev-3',
+    productId: 'all',
+    customerName: 'حسام نوری (شیراز)',
+    rating: 5,
+    comment: 'ارسال با پست پیشتاز سریع بود و کد ۲۴ رقمی رهگیری پیامک شد. از راهنمای فرم صورت استفاده کردم و فریم دقیقاً مناسب صورتم بود.',
+    isVerifiedPurchase: true,
+    createdAt: new Date(Date.now() - 86400000 * 8).toISOString(),
+  }
+];
+
+export function getStoredReviews(productId?: string): typeof DEFAULT_CUSTOMER_REVIEWS {
+  try {
+    const raw = localStorage.getItem(REVIEWS_KEY);
+    let allReviews = DEFAULT_CUSTOMER_REVIEWS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        allReviews = parsed;
+      }
+    }
+    if (!productId) return allReviews;
+    return allReviews.filter((r) => r.productId === productId || r.productId === 'all');
+  } catch (e) {
+    return DEFAULT_CUSTOMER_REVIEWS;
+  }
+}
+
+export function saveStoredReview(review: {
+  productId: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+}): typeof DEFAULT_CUSTOMER_REVIEWS {
+  try {
+    const cleanReview = {
+      id: `rev-${Date.now()}`,
+      productId: review.productId || 'all',
+      customerName: sanitizeTextInput(review.customerName) || 'خریدار محترم',
+      rating: Math.min(5, Math.max(1, review.rating || 5)),
+      comment: sanitizeTextInput(review.comment),
+      isVerifiedPurchase: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    const current = getStoredReviews();
+    const updated = [cleanReview, ...current];
+    localStorage.setItem(REVIEWS_KEY, JSON.stringify(updated));
+
+    // Send to backend API
+    fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ review: cleanReview }),
+    }).catch(() => {});
+
+    return updated;
+  } catch (e) {
+    return DEFAULT_CUSTOMER_REVIEWS;
+  }
+}
+
+
 

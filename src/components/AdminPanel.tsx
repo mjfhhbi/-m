@@ -1,6 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Order, StoreSettings, OrderStatus, CategoryType, CategoryItem, CouponCode, VisitorStats } from '../types';
-import { formatToman, fileToBase64, DEMO_PRODUCTS, exportBackupData, importBackupData, DEFAULT_CATEGORIES, DEFAULT_COUPONS, testTelegramNotification, resetAllStoreData, fetchVisitorStats, toPersianDigits } from '../utils/storage';
+import { Product, Order, StoreSettings, OrderStatus, CategoryType, CategoryItem, CouponCode, VisitorStats, FaqItemSetting } from '../types';
+import { 
+  formatToman, 
+  fileToBase64, 
+  DEMO_PRODUCTS, 
+  exportBackupData, 
+  importBackupData, 
+  DEFAULT_CATEGORIES, 
+  DEFAULT_COUPONS, 
+  DEFAULT_FAQS,
+  testTelegramNotification, 
+  resetAllStoreData, 
+  fetchVisitorStats, 
+  toPersianDigits,
+  parseNumberInput,
+  tomanToWords,
+  GLASSES_IMAGE_PRESETS
+} from '../utils/storage';
 import { 
   Plus, 
   Edit, 
@@ -23,6 +39,7 @@ import {
   Package, 
   Sparkles,
   RefreshCw,
+  HelpCircle,
   Phone,
   Instagram,
   Send,
@@ -50,7 +67,9 @@ import {
   Share2,
   ChevronDown,
   ChevronUp,
-  FileText
+  FileText,
+  Mail,
+  RotateCcw
 } from 'lucide-react';
 
 import {
@@ -69,6 +88,7 @@ import {
 
 import { motion, AnimatePresence } from 'motion/react';
 import { ImageLazyLoader } from './ImageLazyLoader';
+import { IntroSplash } from './IntroSplash';
 
 interface AdminPanelProps {
   products: Product[];
@@ -241,15 +261,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [formTitle, setFormTitle] = useState('');
   const [formCode, setFormCode] = useState('');
   const [formCategory, setFormCategory] = useState<string>('sunglasses');
-  const [formPrice, setFormPrice] = useState<number>(0);
-  const [formOriginalPrice, setFormOriginalPrice] = useState<number>(0);
+  const [formPriceStr, setFormPriceStr] = useState<string>('');
+  const [formOriginalPriceStr, setFormOriginalPriceStr] = useState<string>('');
   const [formFrameType, setFormFrameType] = useState('کائوچویی');
   const [formLensColor, setFormLensColor] = useState('دودی (UV400)');
   const [formUvProtection, setFormUvProtection] = useState('UV400 + Polarized');
   const [formGender, setFormGender] = useState<'مردانه' | 'زنانه' | 'اسپرت (یونی‌سکس)'>('اسپرت (یونی‌سکس)');
   const [formDescription, setFormDescription] = useState('');
   const [formFeatures, setFormFeatures] = useState('');
-  const [formStock, setFormStock] = useState<number>(5);
+  const [formStockStr, setFormStockStr] = useState<string>('3');
   const [formImages, setFormImages] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [formSeoTitle, setFormSeoTitle] = useState('');
@@ -260,13 +280,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Settings local state
   const [tempSettings, setTempSettings] = useState<StoreSettings>({ ...settings });
+  const [showSplashPreview, setShowSplashPreview] = useState(false);
   const [copiedType, setCopiedType] = useState<'store' | 'admin' | null>(null);
   const [isTestingNtfy, setIsTestingNtfy] = useState(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
   React.useEffect(() => {
-    setTempSettings((prev) => ({ ...prev, ...settings }));
+    setTempSettings(settings);
   }, [settings]);
 
   const handleTestNtfy = async () => {
@@ -378,23 +399,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       label: newCatLabel.trim(),
     };
     const updated = [...activeCategories, newCat];
-    setTempSettings({
+    const updatedSettings: StoreSettings = {
       ...tempSettings,
       categories: updated,
-    });
+      updatedAt: new Date().toISOString(),
+    };
+    setTempSettings(updatedSettings);
+    onSaveSettings(updatedSettings);
     setNewCatLabel('');
-    onShowToast(`دسته‌بندی «${newCat.label}» اضافه شد`);
+    onShowToast(`دسته‌بندی «${newCat.label}» با موفقیت اضافه و ذخیره شد`);
   };
 
   const handleUpdateCategory = (id: string, label: string) => {
     if (!label.trim()) return;
     const updated = activeCategories.map((c) => (c.id === id ? { ...c, label: label.trim() } : c));
-    setTempSettings({
+    const updatedSettings: StoreSettings = {
       ...tempSettings,
       categories: updated,
-    });
+      updatedAt: new Date().toISOString(),
+    };
+    setTempSettings(updatedSettings);
+    onSaveSettings(updatedSettings);
     setEditingCatId(null);
-    onShowToast('نام دسته‌بندی به‌روزرسانی شد');
+    onShowToast('نام دسته‌بندی به‌روزرسانی و ذخیره شد');
   };
 
   const handleDeleteCategory = (id: string, label: string) => {
@@ -403,11 +430,90 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
     const updated = activeCategories.filter((c) => c.id !== id);
-    setTempSettings({
+    const updatedSettings: StoreSettings = {
       ...tempSettings,
       categories: updated,
-    });
-    onShowToast(`دسته‌بندی «${label}» حذف شد`);
+      updatedAt: new Date().toISOString(),
+    };
+    setTempSettings(updatedSettings);
+    onSaveSettings(updatedSettings);
+    onShowToast(`دسته‌بندی «${label}» با موفقیت حذف و تغییرات ذخیره شد`);
+  };
+
+  // FAQ management state
+  const [newFaqQuestion, setNewFaqQuestion] = useState('');
+  const [newFaqAnswer, setNewFaqAnswer] = useState('');
+  const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
+  const [editingFaqQuestion, setEditingFaqQuestion] = useState('');
+  const [editingFaqAnswer, setEditingFaqAnswer] = useState('');
+
+  const activeFaqs = tempSettings.faqs && tempSettings.faqs.length > 0
+    ? tempSettings.faqs
+    : DEFAULT_FAQS;
+
+  const handleAddFaq = () => {
+    if (!newFaqQuestion.trim() || !newFaqAnswer.trim()) {
+      onShowToast('لطفاً عنوان سوال و متن پاسخ را وارد نمایید');
+      return;
+    }
+    const newFaq: FaqItemSetting = {
+      id: `faq-${Date.now()}`,
+      question: newFaqQuestion.trim(),
+      answer: newFaqAnswer.trim(),
+    };
+    const updatedFaqs = [...activeFaqs, newFaq];
+    const updatedSettings: StoreSettings = {
+      ...tempSettings,
+      faqs: updatedFaqs,
+      updatedAt: new Date().toISOString(),
+    };
+    setTempSettings(updatedSettings);
+    onSaveSettings(updatedSettings);
+    setNewFaqQuestion('');
+    setNewFaqAnswer('');
+    onShowToast('سوال متداول جدید با موفقیت افزوده و ذخیره شد');
+  };
+
+  const handleUpdateFaq = (id: string) => {
+    if (!editingFaqQuestion.trim() || !editingFaqAnswer.trim()) {
+      onShowToast('لطفاً عنوان سوال و پاسخ را خالی نگذارید');
+      return;
+    }
+    const updatedFaqs = activeFaqs.map((f) =>
+      f.id === id ? { ...f, question: editingFaqQuestion.trim(), answer: editingFaqAnswer.trim() } : f
+    );
+    const updatedSettings: StoreSettings = {
+      ...tempSettings,
+      faqs: updatedFaqs,
+      updatedAt: new Date().toISOString(),
+    };
+    setTempSettings(updatedSettings);
+    onSaveSettings(updatedSettings);
+    setEditingFaqId(null);
+    onShowToast('سوال متداول با موفقیت ویرایش و ذخیره شد');
+  };
+
+  const handleDeleteFaq = (id: string) => {
+    const updatedFaqs = activeFaqs.filter((f) => f.id !== id);
+    const updatedSettings: StoreSettings = {
+      ...tempSettings,
+      faqs: updatedFaqs,
+      updatedAt: new Date().toISOString(),
+    };
+    setTempSettings(updatedSettings);
+    onSaveSettings(updatedSettings);
+    onShowToast('سوال متداول حذف شد');
+  };
+
+  const handleResetFaqsToDefault = () => {
+    const updatedSettings: StoreSettings = {
+      ...tempSettings,
+      faqs: DEFAULT_FAQS,
+      updatedAt: new Date().toISOString(),
+    };
+    setTempSettings(updatedSettings);
+    onSaveSettings(updatedSettings);
+    onShowToast('سوالات متداول به حالت پیش‌فرض بازگردانی شدند');
   };
 
   // Stats Calculations
@@ -423,15 +529,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setFormTitle('');
     setFormCode(`STK-${Math.floor(100 + Math.random() * 900)}`);
     setFormCategory('sunglasses');
-    setFormPrice(0);
-    setFormOriginalPrice(0);
+    setFormPriceStr('');
+    setFormOriginalPriceStr('');
     setFormFrameType('کائوچویی استوک');
     setFormLensColor('دودی');
     setFormUvProtection('UV400');
     setFormGender('اسپرت (یونی‌سکس)');
     setFormDescription('');
     setFormFeatures('عدسی با کیفیت، فریم مقاوم، همراه هارد کیس');
-    setFormStock(3);
+    setFormStockStr('3');
     setFormImages([]);
     setImageUrlInput('');
     setFormSeoTitle('');
@@ -448,15 +554,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setFormTitle(prod.title);
     setFormCode(prod.code || '');
     setFormCategory(prod.category);
-    setFormPrice(prod.price);
-    setFormOriginalPrice(prod.originalPrice || 0);
+    setFormPriceStr(prod.price ? String(prod.price) : '');
+    setFormOriginalPriceStr(prod.originalPrice ? String(prod.originalPrice) : '');
     setFormFrameType(prod.frameType || '');
     setFormLensColor(prod.lensColor || '');
     setFormUvProtection(prod.uvProtection || '');
     setFormGender(prod.gender || 'اسپرت (یونی‌سکس)');
     setFormDescription(prod.description || '');
     setFormFeatures(prod.features ? prod.features.join('، ') : '');
-    setFormStock(prod.stock);
+    setFormStockStr(String(prod.stock ?? 1));
     setFormImages(prod.images || []);
     setImageUrlInput('');
     setFormSeoTitle(prod.seoTitle || '');
@@ -474,13 +580,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const newImages: string[] = [];
       for (let i = 0; i < files.length; i++) {
         try {
-          const base64 = await fileToBase64(files[i]);
+          const base64 = await fileToBase64(files[i], 2048, 0.92);
           newImages.push(base64);
         } catch (err) {
           console.error('Error uploading file:', err);
         }
       }
       setFormImages((prev) => [...prev, ...newImages]);
+      onShowToast(`${newImages.length} تصویر با کیفیت شفاف اضافه شد`);
     }
   };
 
@@ -495,11 +602,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setFormImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleAddPresetImage = (presetUrl: string) => {
+    if (!formImages.includes(presetUrl)) {
+      setFormImages((prev) => [...prev, presetUrl]);
+      onShowToast('تصویر نمونه به عینک اضافه شد');
+    }
+  };
+
   const handleSaveProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim()) {
       onShowToast('لطفاً عنوان عینک را وارد کنید');
       return;
+    }
+
+    const parsedPrice = parseNumberInput(formPriceStr);
+    if (parsedPrice <= 0) {
+      onShowToast('لطفاً قیمت فروش عینک را وارد کنید');
+      return;
+    }
+
+    const parsedOriginalPrice = parseNumberInput(formOriginalPriceStr);
+    const parsedStock = parseNumberInput(formStockStr) || 1;
+
+    let finalImages = [...formImages];
+    if (finalImages.length === 0) {
+      // Pick matching preset image so product card always has a crisp photo
+      const presetMatch = GLASSES_IMAGE_PRESETS.find((p) => p.category === formCategory) || GLASSES_IMAGE_PRESETS[0];
+      if (presetMatch) {
+        finalImages = [presetMatch.url];
+      }
     }
 
     const featureList = formFeatures
@@ -510,29 +642,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     const productData: Product = {
       id: editingProduct ? editingProduct.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: formTitle,
-      code: formCode || 'STK-100',
+      title: formTitle.trim(),
+      code: (formCode || `STK-${Math.floor(100 + Math.random() * 900)}`).trim(),
       category: formCategory,
-      price: Number(formPrice),
-      originalPrice: formOriginalPrice > 0 ? Number(formOriginalPrice) : undefined,
-      frameType: formFrameType,
-      lensColor: formLensColor,
-      uvProtection: formUvProtection,
-      gender: formGender,
-      images: formImages,
-      description: formDescription,
+      price: parsedPrice,
+      originalPrice: parsedOriginalPrice > parsedPrice ? parsedOriginalPrice : undefined,
+      frameType: formFrameType.trim() || 'کائوچویی',
+      lensColor: formLensColor.trim() || 'دودی',
+      uvProtection: formUvProtection.trim() || 'UV400',
+      gender: formGender || 'اسپرت (یونی‌سکس)',
+      images: finalImages,
+      description: formDescription.trim(),
       features: featureList,
-      stock: Number(formStock),
+      stock: parsedStock,
       seoTitle: formSeoTitle.trim() || undefined,
       seoDescription: formSeoDescription.trim() || undefined,
       seoKeywords: formSeoKeywords.trim() || undefined,
-      ogImage: formOgImage.trim() || (formImages.length > 0 ? formImages[0] : undefined),
+      ogImage: formOgImage.trim() || (finalImages.length > 0 ? finalImages[0] : undefined),
       createdAt: editingProduct ? editingProduct.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     onSaveProduct(productData);
     setIsModalOpen(false);
-    onShowToast(editingProduct ? 'عینک با موفقیت ویرایش شد' : 'عینک جدید به ویترین اضافه شد');
+    onShowToast(editingProduct ? 'عینک با موفقیت ویرایش و ذخیره شد' : 'عینک جدید با موفقیت به ویترین اضافه شد');
   };
 
   const copyUrl = (type: 'store' | 'admin') => {
@@ -1675,6 +1808,116 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
+          {/* INTRO SPLASH ANIMATION CUSTOMIZATION SECTION */}
+          <div className="bg-gradient-to-b from-amber-500/10 via-zinc-950 to-zinc-950 p-4 rounded-xl border border-amber-500/40 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>تنظیمات و شخصی‌سازی صفحه انیمیشنی ورودی (Intro Splash)</span>
+                </h4>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  می‌توانید تمام متن‌های صفحه ورودی متحرک قبل از ورود به فروشگاه را تغییر داده یا آن را فعال/غیرفعال کنید.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSplashPreview(true)}
+                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 shrink-0"
+                  title="پیش‌نمایش زنده انیمیشن"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>⚡ تست انیمیشن ورودی</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTempSettings({ ...tempSettings, showIntroSplash: !(tempSettings.showIntroSplash !== false) })}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shrink-0 ${
+                    tempSettings.showIntroSplash !== false
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                      : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                  }`}
+                >
+                  {tempSettings.showIntroSplash !== false ? '✅ انیمیشن فعال' : '❌ انیمیشن غیرفعال'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  متن بج طلایی بالای لوگو در صفحه ورودی
+                </label>
+                <input
+                  type="text"
+                  value={tempSettings.splashBadgeText ?? 'عینک‌های اورجینال استوک اروپا'}
+                  onChange={(e) => setTempSettings({ ...tempSettings, splashBadgeText: e.target.value })}
+                  placeholder="عینک‌های اورجینال استوک اروپا"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-amber-300 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  عنوان برند / تیتر اصلی صفحه ورودی
+                </label>
+                <input
+                  type="text"
+                  value={tempSettings.splashTitle ?? tempSettings.storeName}
+                  onChange={(e) => setTempSettings({ ...tempSettings, splashTitle: e.target.value })}
+                  placeholder="فروشگاه عینک استوک جهانی"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white font-bold focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  زیرعنوان و شعار انیمیشنی صفحه ورودی (توضیح کوتاه)
+                </label>
+                <textarea
+                  rows={2}
+                  value={tempSettings.splashSubtitle ?? tempSettings.tagline}
+                  onChange={(e) => setTempSettings({ ...tempSettings, splashSubtitle: e.target.value })}
+                  placeholder="تضمین اصالت فریم، عدسی‌های پلاریزه و UV400 با ارسال فوری"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  متن دکمه ورود سریع
+                </label>
+                <input
+                  type="text"
+                  value={tempSettings.splashButtonText ?? 'ورود به ویترین فروشگاه'}
+                  onChange={(e) => setTempSettings({ ...tempSettings, splashButtonText: e.target.value })}
+                  placeholder="ورود به ویترین فروشگاه"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  مدت زمان نمایش خودکار (میلی‌ثانیه)
+                </label>
+                <input
+                  type="number"
+                  step={200}
+                  min={1000}
+                  max={8000}
+                  value={tempSettings.splashDurationMs ?? 2400}
+                  onChange={(e) => setTempSettings({ ...tempSettings, splashDurationMs: Number(e.target.value) })}
+                  placeholder="2400"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-amber-400 font-mono text-center focus:outline-none focus:border-amber-500"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">۲۴۰۰ میلی‌ثانیه = ۲.۴ ثانیه (پیش‌فرض پیشنهادی)</p>
+              </div>
+            </div>
+          </div>
+
           {/* Site Announcement & Hero Section Texts */}
           <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
             <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
@@ -1943,6 +2186,142 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
+          {/* FAQ Management Section */}
+          <div className="bg-zinc-950 p-4 rounded-xl border border-amber-500/30 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+                  <HelpCircle className="w-4 h-4 text-amber-400" />
+                  <span>مدیریت سوالات متداول و راهنمای خرید (FAQ)</span>
+                </h4>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  شما می‌توانید تمام سوالات متداول را به دلخواه ویرایش کنید، سوال جدید اضافه کرده یا سوالات قبلی را حذف کنید.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetFaqsToDefault}
+                className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700 text-xs px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                title="بازگردانی به ۵ سوال پیش‌فرض"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>بازنشانی به پیش‌فرض</span>
+              </button>
+            </div>
+
+            {/* Add New FAQ Form */}
+            <div className="bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 space-y-2.5">
+              <span className="text-xs font-bold text-white block">افزودن سوال و پاسخ جدید:</span>
+              <input
+                type="text"
+                value={newFaqQuestion}
+                onChange={(e) => setNewFaqQuestion(e.target.value)}
+                placeholder="عنوان سوال جدید (مثلاً: نحوه نگهداری و شستشوی عدسی عینک چگونه است؟)"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+              />
+              <textarea
+                rows={2}
+                value={newFaqAnswer}
+                onChange={(e) => setNewFaqAnswer(e.target.value)}
+                placeholder="متن کامل پاسخ به این سوال..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddFaq}
+                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  <span>افزودن این سوال به لیست</span>
+                </button>
+              </div>
+            </div>
+
+            {/* FAQs List */}
+            <div className="space-y-2.5 pt-1">
+              <span className="text-xs text-zinc-400 block font-medium">سوالات متداول فعلی ({toPersianDigits(activeFaqs.length)} مورد):</span>
+              <div className="space-y-2">
+                {activeFaqs.map((faq, idx) => (
+                  <div
+                    key={faq.id || idx}
+                    className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl space-y-2"
+                  >
+                    {editingFaqId === faq.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editingFaqQuestion}
+                          onChange={(e) => setEditingFaqQuestion(e.target.value)}
+                          className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none"
+                          placeholder="عنوان سوال"
+                          autoFocus
+                        />
+                        <textarea
+                          rows={3}
+                          value={editingFaqAnswer}
+                          onChange={(e) => setEditingFaqAnswer(e.target.value)}
+                          className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none"
+                          placeholder="متن پاسخ"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateFaq(faq.id)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold"
+                          >
+                            ذخیره ویرایش
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingFaqId(null)}
+                            className="bg-zinc-800 text-zinc-400 hover:text-white px-3 py-1.5 rounded-lg text-xs"
+                          >
+                            انصراف
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 shrink-0"></span>
+                            <h5 className="text-xs font-bold text-white leading-snug">{faq.question}</h5>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingFaqId(faq.id);
+                                setEditingFaqQuestion(faq.question);
+                                setEditingFaqAnswer(faq.answer);
+                              }}
+                              className="p-1.5 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-lg transition-colors"
+                              title="ویرایش سوال و پاسخ"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteFaq(faq.id)}
+                              className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 rounded-lg transition-colors"
+                              title="حذف سوال"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed pr-4 mt-1 border-t border-zinc-800/60 pt-1.5">
+                          {faq.answer}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* NTFY Push Notifications Section (Works without VPN in Iran) */}
           <div className="bg-zinc-950 border border-emerald-500/40 rounded-2xl p-4 space-y-3.5 relative overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
@@ -2104,6 +2483,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">ایمیل مدیریت جهت دریافت فاکتور و گزارشات</label>
+              <input
+                type="email"
+                value={tempSettings.managerEmail || 'matinjahanbani2024@gmail.com'}
+                onChange={(e) => setTempSettings({ ...tempSettings, managerEmail: e.target.value.trim() })}
+                placeholder="matinjahanbani2024@gmail.com"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-amber-400 font-mono dir-ltr text-right"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">شماره واتساپ پشتیبانی مستقیم</label>
+              <input
+                type="text"
+                value={tempSettings.whatsappNumber || ''}
+                onChange={(e) => setTempSettings({ ...tempSettings, whatsappNumber: e.target.value.trim() })}
+                placeholder="09120000000"
+                className="w-full bg-zinc-950 border border-emerald-500/40 rounded-xl px-3.5 py-2 text-xs text-emerald-400 font-mono dir-ltr text-right"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-zinc-300 mb-1">آیدی تلگرام پشتیبانی</label>
               <input
@@ -2848,49 +3249,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* ADD / EDIT EYEWEAR PRODUCT MODAL */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl overflow-hidden my-auto text-right"
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden my-auto text-right flex flex-col max-h-[92vh]"
             >
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3.5 bg-zinc-900/95 sticky top-0 z-10 backdrop-blur-md">
+                <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
                   <Glasses className="w-5 h-5 text-amber-400" />
                   <span>{editingProduct ? 'ویرایش مشخصات عینک' : 'افزودن عینک جدید به ویترین'}</span>
                 </h3>
                 <button
+                  type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800"
+                  className="text-zinc-400 hover:text-white p-1.5 rounded-xl hover:bg-zinc-800 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveProductSubmit} className="space-y-4">
+              {/* Modal Form Scrollable Area */}
+              <form onSubmit={handleSaveProductSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                 {/* Title & Code */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-zinc-300 mb-1">عنوان کامل عینک *</label>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">
+                      عنوان کامل عینک <span className="text-amber-400">*</span>
+                    </label>
                     <input
                       type="text"
                       required
                       value={formTitle}
                       onChange={(e) => setFormTitle(e.target.value)}
-                      placeholder="مثال: عینک آفتابی ری‌بن فریم خلبانی"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                      placeholder="مثال: عینک آفتابی ری‌بن فریم خلبانی اصل"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-zinc-300 mb-1">کد محصول</label>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">کد محصول / بارکد</label>
                     <input
                       type="text"
                       value={formCode}
                       onChange={(e) => setFormCode(e.target.value)}
                       placeholder="STK-101"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-amber-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono dir-ltr text-right placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition-colors"
                     />
                   </div>
                 </div>
@@ -2902,7 +3308,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <select
                       value={formCategory}
                       onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 transition-colors"
                     >
                       {activeCategories.map((cat) => (
                         <option key={cat.id} value={cat.id}>
@@ -2913,26 +3319,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-zinc-300 mb-1">قیمت فروش (تومان) *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-zinc-300">
+                        قیمت فروش (تومان) <span className="text-amber-400">*</span>
+                      </label>
+                      {parseNumberInput(formPriceStr) > 0 && (
+                        <span className="text-[10px] text-amber-400 font-mono">
+                          {formatToman(parseNumberInput(formPriceStr))}
+                        </span>
+                      )}
+                    </div>
                     <input
-                      type="number"
+                      type="text"
                       required
-                      value={formPrice}
-                      onChange={(e) => setFormPrice(Number(e.target.value))}
-                      placeholder="1850000"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                      value={formPriceStr}
+                      onChange={(e) => setFormPriceStr(e.target.value)}
+                      placeholder="مثال: 1,850,000"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition-colors"
                     />
+                    {parseNumberInput(formPriceStr) > 0 && (
+                      <p className="text-[10px] text-emerald-400 mt-1 truncate">
+                        {tomanToWords(parseNumberInput(formPriceStr))}
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-zinc-300 mb-1">قیمت اصلی/قبل تخفیف</label>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">قیمت اصلی قبل تخفیف</label>
                     <input
-                      type="number"
-                      value={formOriginalPrice}
-                      onChange={(e) => setFormOriginalPrice(Number(e.target.value))}
-                      placeholder="اختیاری"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                      type="text"
+                      value={formOriginalPriceStr}
+                      onChange={(e) => setFormOriginalPriceStr(e.target.value)}
+                      placeholder="اختیاری (برای نمایش خط‌خورده)"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition-colors"
                     />
+                    {parseNumberInput(formOriginalPriceStr) > 0 && (
+                      <p className="text-[10px] text-zinc-400 mt-1 truncate">
+                        {formatToman(parseNumberInput(formOriginalPriceStr))}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -2945,7 +3370,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={formFrameType}
                       onChange={(e) => setFormFrameType(e.target.value)}
                       placeholder="کائوچویی، فلزی..."
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-white"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
 
@@ -2956,7 +3381,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       value={formLensColor}
                       onChange={(e) => setFormLensColor(e.target.value)}
                       placeholder="دودی، قهوه‌ای..."
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-white"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
 
@@ -2966,42 +3391,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       type="text"
                       value={formUvProtection}
                       onChange={(e) => setFormUvProtection(e.target.value)}
-                      placeholder="UV400"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-white"
+                      placeholder="UV400 + Polarized"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-medium text-zinc-400 mb-1">موجودی انبار</label>
                     <input
-                      type="number"
-                      value={formStock}
-                      onChange={(e) => setFormStock(Number(e.target.value))}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono"
+                      type="text"
+                      value={formStockStr}
+                      onChange={(e) => setFormStockStr(e.target.value)}
+                      placeholder="تعداد موجودی"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                     />
                   </div>
                 </div>
 
                 {/* Description & Features */}
                 <div>
-                  <label className="block text-xs font-medium text-zinc-300 mb-1">توضیحات عینک</label>
+                  <label className="block text-xs font-medium text-zinc-300 mb-1">توضیحات و ویژگی‌های عینک</label>
                   <textarea
                     rows={2}
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    placeholder="توضیحات درباره کیفیت، اصالت، ویژگی‌ها..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white"
+                    placeholder="توضیحات درباره کیفیت فریم، شفافیت دید، سبک طراحی، کشور سازنده و اقلام همراه..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
-                {/* Image Upload Area */}
+                {/* Image Upload Area & Presets */}
                 <div className="bg-zinc-950 border border-zinc-800 p-3.5 rounded-xl space-y-3">
-                  <label className="block text-xs font-bold text-amber-400">تصاویر عینک (آپلود عکس از سیستم یا لینک):</label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-amber-400">تصاویر عینک (آپلود، لینک یا عکس‌های آماده):</label>
+                    <span className="text-[10px] text-zinc-400">{formImages.length} تصویر انتخاب شده</span>
+                  </div>
                   
+                  {/* Action Buttons: Upload & URL */}
                   <div className="flex flex-col sm:flex-row items-center gap-2">
                     <label className="w-full sm:w-auto cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors">
                       <Upload className="w-4 h-4" />
-                      <span>انتخاب عکس از حافظه گوشی/کامپیوتر</span>
+                      <span>انتخاب عکس از حافظه گوشی یا کامپیوتر</span>
                       <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
                     </label>
 
@@ -3010,34 +3440,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         type="url"
                         value={imageUrlInput}
                         onChange={(e) => setImageUrlInput(e.target.value)}
-                        placeholder="یا جایگذاری لینک اینترنتی عکس..."
-                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono dir-ltr text-right"
+                        placeholder="یا جایگذاری آدرس اینترنتی عکس..."
+                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white font-mono dir-ltr text-right focus:outline-none focus:border-amber-500"
                       />
                       <button
                         type="button"
                         onClick={handleAddImageUrl}
-                        className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-3 py-2 rounded-xl text-xs font-bold shrink-0"
+                        className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-colors"
                       >
                         افزودن لینک
                       </button>
                     </div>
                   </div>
 
-                  {/* Uploaded Images Thumbnails */}
-                  {formImages.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      {formImages.map((img, idx) => (
-                        <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-zinc-700 group">
-                          <img src={img} alt="" className="w-full h-full object-cover" />
+                  {/* Ready Preset Eyewear Photos Picker */}
+                  <div className="pt-2 border-t border-zinc-800/80">
+                    <span className="text-[11px] text-zinc-400 block mb-2 font-medium">
+                      عکس‌های باکیفیت آماده عینک (کلیک کنید تا به عینک اضافه شود):
+                    </span>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {GLASSES_IMAGE_PRESETS.map((preset, pIdx) => {
+                        const isSelected = formImages.includes(preset.url);
+                        return (
                           <button
                             type="button"
-                            onClick={() => handleRemoveImage(idx)}
-                            className="absolute inset-0 bg-black/60 text-rose-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            key={preset.url || pIdx}
+                            onClick={() => handleAddPresetImage(preset.url)}
+                            className={`group relative rounded-xl overflow-hidden border p-1 text-center transition-all ${
+                              isSelected
+                                ? 'border-amber-500 bg-amber-500/10 shadow-sm shadow-amber-500/20'
+                                : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900'
+                            }`}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <div className="aspect-square rounded-lg overflow-hidden mb-1 bg-zinc-950">
+                              <img src={preset.url} alt={preset.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                            </div>
+                            <span className="text-[10px] text-zinc-300 block truncate">{preset.name}</span>
+                            {isSelected && (
+                              <div className="absolute top-1.5 right-1.5 bg-amber-500 text-zinc-950 p-0.5 rounded-full shadow">
+                                <Check className="w-3 h-3 stroke-[3]" />
+                              </div>
+                            )}
                           </button>
-                        </div>
-                      ))}
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Uploaded Images Thumbnails */}
+                  {formImages.length > 0 && (
+                    <div className="pt-2 border-t border-zinc-800/80">
+                      <span className="text-[11px] text-zinc-400 block mb-2 font-medium">عکس‌های انتخاب شده برای این عینک:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {formImages.map((img, idx) => (
+                          <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-zinc-700 group bg-zinc-900">
+                            <img src={img} alt="" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(idx)}
+                              className="absolute inset-0 bg-black/70 text-rose-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="حذف این تصویر"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                            {idx === 0 && (
+                              <span className="absolute bottom-0 inset-x-0 bg-amber-500/90 text-zinc-950 text-[9px] font-bold text-center py-0.5">
+                                کاور اصلی
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3227,12 +3700,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   )}
                 </div>
 
-                <button
-                  type="submit"
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-3 rounded-xl text-xs shadow-lg transition-colors"
-                >
-                  ذخیره و انتشار عینک
-                </button>
+                {/* Sticky Action Footer */}
+                <div className="pt-2 sticky bottom-0 bg-zinc-900/95 backdrop-blur-md border-t border-zinc-800 flex items-center justify-end gap-2 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                  >
+                    انصراف
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 sm:flex-none sm:min-w-[200px] bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 px-6 rounded-xl text-xs shadow-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{editingProduct ? 'ذخیره تغییرات عینک' : 'ذخیره و انتشار عینک در ویترین'}</span>
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>
@@ -3327,6 +3811,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Live Preview of Intro Splash */}
+      {showSplashPreview && (
+        <IntroSplash
+          settings={tempSettings}
+          onFinish={() => setShowSplashPreview(false)}
+        />
+      )}
     </div>
   );
 };

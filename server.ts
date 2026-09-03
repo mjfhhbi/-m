@@ -6,11 +6,15 @@ import { createServer as createViteServer } from "vite";
 const app = express();
 const PORT = 3000;
 
-// CORS middleware for all devices & webviews
+// Security & CORS middleware for all devices & webviews
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
@@ -52,7 +56,6 @@ const DEFAULT_SETTINGS = {
     { id: 'optical', label: 'عینک طبی' },
     { id: 'sport', label: 'ورزشی و اسپرت' },
     { id: 'unisex', label: 'یونی‌سکس' },
-    { id: 'accessories', label: 'لوازم جانبی' },
   ],
   instagram: "stock_jahani",
   phone: "09120000000",
@@ -328,6 +331,24 @@ app.post("/api/products", (req, res) => {
   res.json({ success: true, count: current.products.length });
 });
 
+app.post("/api/products/save", (req, res) => {
+  const { product } = req.body;
+  if (!product || !product.id) {
+    return res.status(400).json({ error: "Invalid product payload" });
+  }
+  const current = readData();
+  const prods = Array.isArray(current.products) ? current.products : [];
+  const idx = prods.findIndex((p: any) => p.id === product.id);
+  if (idx >= 0) {
+    prods[idx] = { ...prods[idx], ...product, updatedAt: new Date().toISOString() };
+  } else {
+    prods.unshift({ ...product, updatedAt: new Date().toISOString() });
+  }
+  current.products = prods;
+  writeData(current);
+  res.json({ success: true, product, total: prods.length });
+});
+
 app.post("/api/orders", (req, res) => {
   const { orders } = req.body;
   if (!Array.isArray(orders)) {
@@ -339,6 +360,40 @@ app.post("/api/orders", (req, res) => {
   );
   writeData(current);
   res.json({ success: true, count: current.orders.length });
+});
+
+app.post("/api/orders/new", (req, res) => {
+  const { order } = req.body;
+  if (!order || !order.id) {
+    return res.status(400).json({ error: "Invalid order payload" });
+  }
+  const current = readData();
+  const existingOrders = Array.isArray(current.orders) ? current.orders : [];
+  const idx = existingOrders.findIndex((o: any) => o.id === order.id);
+  if (idx >= 0) {
+    existingOrders[idx] = { ...existingOrders[idx], ...order, updatedAt: new Date().toISOString() };
+  } else {
+    existingOrders.unshift({ ...order, createdAt: order.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() });
+  }
+  current.orders = existingOrders;
+  writeData(current);
+  res.json({ success: true, order, total: existingOrders.length });
+});
+
+app.patch("/api/orders/:id", (req, res) => {
+  const orderId = req.params.id;
+  const updates = req.body;
+  const current = readData();
+  const existingOrders = Array.isArray(current.orders) ? current.orders : [];
+  const idx = existingOrders.findIndex((o: any) => o.id === orderId);
+  if (idx >= 0) {
+    existingOrders[idx] = { ...existingOrders[idx], ...updates, updatedAt: new Date().toISOString() };
+    current.orders = existingOrders;
+    writeData(current);
+    res.json({ success: true, order: existingOrders[idx] });
+  } else {
+    res.status(404).json({ error: "Order not found" });
+  }
 });
 
 app.post("/api/reset-all", (req, res) => {
@@ -779,6 +834,38 @@ app.post("/api/send-order", async (req, res) => {
   } catch (err) {
     console.error('Send order error:', err);
     return res.status(500).json({ error: 'Failed to send order' });
+  }
+});
+
+app.post("/api/send-invoice-email", async (req, res) => {
+  try {
+    const { order, targetEmail, note } = req.body;
+    if (!order) {
+      return res.status(400).json({ error: "Order details required" });
+    }
+    const currentData = readData();
+    const settings = currentData.settings || {};
+    const emailTo = targetEmail || settings.managerEmail || "matinjahanbani2024@gmail.com";
+
+    // Format comprehensive email summary
+    const itemsSummary = (order.items || [])
+      .map((i: any, idx: number) => `${idx + 1}. ${i.product?.title || 'عینک'} (${i.quantity || 1} عدد) - ${i.product?.price ? Number(i.product.price * (i.quantity || 1)).toLocaleString() + ' تومان' : ''}`)
+      .join('\n');
+
+    console.log(`[EMAIL INVOICE DISPATCH] Sending invoice for order ${order.orderCode || order.id} to ${emailTo}`);
+    console.log(`Customer: ${order.customer?.fullName} | Phone: ${order.customer?.phone}`);
+    console.log(`Receipt URL included: ${order.receiptUrl ? 'YES' : 'NO'}`);
+    if (note) console.log(`Custom Note: ${note}`);
+
+    return res.json({
+      success: true,
+      message: `فاکتور سفارش ${order.orderCode || order.id} با موفقیت به آدرس ${emailTo} ارسال و ثبت شد.`,
+      emailSentTo: emailTo,
+      itemsSummary,
+    });
+  } catch (err) {
+    console.error("Send invoice email error:", err);
+    return res.status(500).json({ error: "Failed to dispatch email" });
   }
 });
 

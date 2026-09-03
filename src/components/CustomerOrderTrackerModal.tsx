@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Order, OrderCustomer, StoreSettings } from '../types';
-import { formatToman } from '../utils/storage';
+import { formatToman, fetchServerData } from '../utils/storage';
 import { 
   X, 
   Search, 
@@ -60,7 +60,15 @@ export const CustomerOrderTrackerModal: React.FC<CustomerOrderTrackerModalProps>
   });
   const [editFormError, setEditFormError] = useState('');
 
-  // Load remembered phone from localStorage on open
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [liveOrders, setLiveOrders] = useState<Order[]>(orders);
+
+  // Keep liveOrders in sync with prop orders
+  useEffect(() => {
+    setLiveOrders(orders);
+  }, [orders]);
+
+  // Load remembered phone from localStorage on open and refresh from server
   useEffect(() => {
     if (isOpen) {
       const savedPhone = localStorage.getItem('customer_tracker_phone');
@@ -68,23 +76,48 @@ export const CustomerOrderTrackerModal: React.FC<CustomerOrderTrackerModalProps>
         setActivePhone(savedPhone);
         setSearchInput(savedPhone);
       }
+      // Re-fetch latest from server and local storage immediately
+      setIsLoadingOrders(true);
+      fetchServerData()
+        .then((res) => {
+          if (res && Array.isArray(res.orders)) {
+            setLiveOrders(res.orders);
+          }
+        })
+        .finally(() => setIsLoadingOrders(false));
     }
   }, [isOpen]);
 
   // Standardize digits (convert Persian numbers to English for searching)
   const normalizeDigits = (str: string) => {
-    return str
+    if (!str) return '';
+    return String(str)
       .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
       .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace(/\s+/g, '')
+      .replace(/-/g, '')
+      .replace(/_/g, '')
       .trim();
   };
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     const query = normalizeDigits(searchInput);
-    if (!query || query.length < 3) {
+    if (!query || query.length < 2) {
       setErrorMsg('لطفاً شماره موبایل یا کد سفارش (مثلاً SJ-1234) را وارد کنید');
       return;
+    }
+
+    setIsLoadingOrders(true);
+    try {
+      const freshData = await fetchServerData();
+      if (freshData && Array.isArray(freshData.orders)) {
+        setLiveOrders(freshData.orders);
+      }
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setIsLoadingOrders(false);
     }
 
     setErrorMsg('');
@@ -99,17 +132,21 @@ export const CustomerOrderTrackerModal: React.FC<CustomerOrderTrackerModalProps>
   };
 
   // Filter orders matching search input or active phone
+  const cleanActiveQuery = normalizeDigits(activePhone || '').toLowerCase();
   const matchedOrders = activePhone
-    ? orders.filter((o) => {
+    ? liveOrders.filter((o) => {
         if (!o) return false;
-        const query = normalizeDigits(activePhone).toLowerCase();
-        const phoneNorm = normalizeDigits(o.customer?.phone || '').toLowerCase();
-        const codeNorm = (o.orderCode || '').toLowerCase();
-        const idNorm = (o.id || '').toLowerCase();
+        const phoneClean = normalizeDigits(o.customer?.phone || '').toLowerCase();
+        const codeClean = normalizeDigits(o.orderCode || '').toLowerCase();
+        const idClean = normalizeDigits(o.id || '').toLowerCase();
+        const nameClean = (o.customer?.fullName || '').toLowerCase().trim();
+
         return (
-          phoneNorm.includes(query) ||
-          codeNorm.includes(query) ||
-          idNorm.includes(query)
+          (cleanActiveQuery.length >= 3 && phoneClean.includes(cleanActiveQuery)) ||
+          (cleanActiveQuery.length >= 3 && cleanActiveQuery.includes(phoneClean) && phoneClean.length >= 4) ||
+          codeClean.includes(cleanActiveQuery) ||
+          idClean.includes(cleanActiveQuery) ||
+          nameClean.includes(activePhone.toLowerCase().trim())
         );
       })
     : [];

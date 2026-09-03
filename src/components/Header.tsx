@@ -12,21 +12,31 @@ import {
   Truck,
   Wifi,
   WifiOff,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Heart,
+  Eye,
+  Smile,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { CategoryType, StoreSettings } from '../types';
 import { DEFAULT_CATEGORIES } from '../utils/storage';
 import { motion, AnimatePresence } from 'motion/react';
+import { sound } from '../utils/audio';
 
 interface HeaderProps {
   currentView: 'store' | 'admin';
   onViewChange: (view: 'store' | 'admin') => void;
   cartCount: number;
   onOpenCart: () => void;
+  wishlistCount?: number;
+  onOpenWishlist?: () => void;
   comparedCount?: number;
   onOpenCompareModal?: () => void;
   onOpenTrackerModal?: () => void;
   onOpenSupportModal?: () => void;
+  onOpenFaceGuide?: () => void;
+  onOpenLensSimulator?: () => void;
   selectedCategory: CategoryType;
   onSelectCategory: (cat: CategoryType) => void;
   searchQuery: string;
@@ -42,10 +52,14 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   cartCount,
   onOpenCart,
+  wishlistCount = 0,
+  onOpenWishlist,
   comparedCount = 0,
   onOpenCompareModal,
   onOpenTrackerModal,
   onOpenSupportModal,
+  onOpenFaceGuide,
+  onOpenLensSimulator,
   selectedCategory,
   onSelectCategory,
   searchQuery,
@@ -57,6 +71,19 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isSoundEnabled, setIsSoundEnabled] = useState(sound.enabled);
+
+  const toggleSound = () => {
+    const nextState = !sound.enabled;
+    sound.setEnabled(nextState);
+    setIsSoundEnabled(nextState);
+    if (nextState) {
+      sound.playTestChime();
+      onShowToast('افکت‌های صوتی تعاملی فعال شد 🔊');
+    } else {
+      onShowToast('صدا غیرفعال شد 🔇');
+    }
+  };
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -94,6 +121,19 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Audio Feedback Toggle Button */}
+            <button
+              onClick={toggleSound}
+              className={`p-1 rounded-full transition-all border ${
+                isSoundEnabled
+                  ? 'bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25'
+                  : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300'
+              }`}
+              title={isSoundEnabled ? 'غیرفعال‌سازی افکت‌های صوتی' : 'فعال‌سازی افکت‌های صوتی تعاملی'}
+            >
+              {isSoundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            </button>
+
             {/* Online / Network Status Indicator */}
             <div 
               className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium border transition-all ${
@@ -244,6 +284,24 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
+            {/* Wishlist Button */}
+            {onOpenWishlist && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onOpenWishlist}
+                className="relative p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-rose-400 border border-zinc-800 transition-colors"
+                title="عینک‌های نشان‌شده"
+              >
+                <Heart className={`w-4 h-4 ${wishlistCount > 0 ? 'text-rose-500 fill-rose-500' : ''}`} />
+                {wishlistCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                    {wishlistCount}
+                  </span>
+                )}
+              </motion.button>
+            )}
+
             {/* Compare Button */}
             {comparedCount > 0 && onOpenCompareModal && (
               <motion.button
@@ -355,38 +413,91 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="text-[10px] bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">ورود خریدار</span>
                 </button>
               )}
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {onOpenFaceGuide && (
+                  <button
+                    onClick={() => { onOpenFaceGuide(); setMobileMenuOpen(false); }}
+                    className="flex items-center justify-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 p-2 rounded-xl text-xs font-bold transition-colors"
+                  >
+                    <Smile className="w-4 h-4 text-amber-400" />
+                    <span>راهنمای فرم صورت</span>
+                  </button>
+                )}
+
+                {onOpenLensSimulator && (
+                  <button
+                    onClick={() => { onOpenLensSimulator(); setMobileMenuOpen(false); }}
+                    className="flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 border border-zinc-800 p-2 rounded-xl text-xs font-bold transition-colors"
+                  >
+                    <Eye className="w-4 h-4 text-amber-400" />
+                    <span>شبیه‌ساز عدسی</span>
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* Category Navbar Bar (Only shown in Store View) */}
         {currentView === 'store' && (
-          <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1">
-            {categories.map((cat) => {
-              const isSelected = selectedCategory === cat.id;
-              return (
-                <motion.button
-                  key={cat.id}
-                  whileTap={{ scale: 0.95 }}
-                  whileHover={{ scale: 1.04 }}
-                  onClick={() => onSelectCategory(cat.id)}
-                  className={`relative shrink-0 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-medium transition-colors ${
-                    isSelected
-                      ? 'text-zinc-950 font-bold shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/80 hover:bg-zinc-800/80 border border-zinc-800/50'
-                  }`}
+          <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar py-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {categories.map((cat) => {
+                const isSelected = selectedCategory === cat.id;
+                return (
+                  <motion.button
+                    key={cat.id}
+                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.04 }}
+                    onClick={() => onSelectCategory(cat.id)}
+                    className={`relative shrink-0 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-medium transition-colors ${
+                      isSelected
+                        ? 'text-zinc-950 font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/80 hover:bg-zinc-800/80 border border-zinc-800/50'
+                    }`}
+                  >
+                    {isSelected && (
+                      <motion.span
+                        layoutId="activeCategoryPill"
+                        className="absolute inset-0 bg-zinc-100 rounded-xl"
+                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10">{cat.label}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            {/* Smart Tools (Face Shape Guide & Lens Simulator) */}
+            <div className="flex items-center gap-1.5 shrink-0 pr-2 border-r border-zinc-800/80">
+              {onOpenFaceGuide && (
+                <button
+                  onClick={() => {
+                    sound.playPop();
+                    onOpenFaceGuide();
+                  }}
+                  className="flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all shadow-sm shrink-0"
                 >
-                  {isSelected && (
-                    <motion.span
-                      layoutId="activeCategoryPill"
-                      className="absolute inset-0 bg-zinc-100 rounded-xl"
-                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                    />
-                  )}
-                  <span className="relative z-10">{cat.label}</span>
-                </motion.button>
-              );
-            })}
+                  <Smile className="w-3.5 h-3.5 text-amber-400" />
+                  <span>راهنمای فرم صورت</span>
+                </button>
+              )}
+
+              {onOpenLensSimulator && (
+                <button
+                  onClick={() => {
+                    sound.playPop();
+                    onOpenLensSimulator();
+                  }}
+                  className="flex items-center gap-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-amber-400 border border-zinc-800 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all shrink-0"
+                >
+                  <Eye className="w-3.5 h-3.5 text-amber-400" />
+                  <span>شبیه‌ساز عدسی</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

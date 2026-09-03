@@ -12,6 +12,7 @@ import {
 import { 
   getStoredProducts, 
   saveStoredProducts, 
+  saveSingleProduct,
   getStoredOrders, 
   saveStoredOrders, 
   getStoredSettings, 
@@ -26,7 +27,9 @@ import {
   trackPageVisit,
   sendHeartbeat,
   fetchVisitorStats,
-  toPersianDigits
+  toPersianDigits,
+  getWishlistIds,
+  toggleWishlistId
 } from './utils/storage';
 
 import { Header } from './components/Header';
@@ -36,6 +39,10 @@ import { ProductDetailModal } from './components/ProductDetailModal';
 import { QuickViewModal } from './components/QuickViewModal';
 import { CompareModal } from './components/CompareModal';
 import { CartDrawer } from './components/CartDrawer';
+import { WishlistDrawer } from './components/WishlistDrawer';
+import { FaceShapeGuideModal } from './components/FaceShapeGuideModal';
+import { LensSimulatorModal } from './components/LensSimulatorModal';
+import { StoreFaq } from './components/StoreFaq';
 import { CheckoutModal } from './components/CheckoutModal';
 import { AdminPanel } from './components/AdminPanel';
 import { CustomerOrderTrackerModal } from './components/CustomerOrderTrackerModal';
@@ -44,6 +51,10 @@ import { SupportModal } from './components/SupportModal';
 import { IntroSplash } from './components/IntroSplash';
 import { SeoHead } from './components/SeoHead';
 import { Toast } from './components/Toast';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { FilterBar, FilterState } from './components/FilterBar';
+import { SocialProofTicker } from './components/SocialProofTicker';
+import { sound } from './utils/audio';
 
 import { Glasses, Plus, ShieldCheck, Sparkles, RefreshCw, ShoppingBag, Instagram, Phone, Send, Lock, X, KeyRound, Headphones, MessageSquare, ArrowRightLeft, Users, Eye, Activity, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -54,13 +65,29 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Advanced Filters State
+  const [filters, setFilters] = useState<FilterState>({
+    category: 'all',
+    search: '',
+    sortBy: 'newest',
+    minPrice: 0,
+    maxPrice: 5000000,
+    onlyInStock: false,
+    onlyDiscounted: false,
+    onlyPolarized: false,
+    onlyUV400: false,
+    gender: 'all',
+    frameMaterial: 'all',
+  });
+
   // Persistent State
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [settings, setSettings] = useState<StoreSettings>(getStoredSettings());
 
-  // Cart & Comparison State
+  // Cart, Wishlist & Comparison State
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [wishlistIds, setWishlistIds] = useState<string[]>(() => getWishlistIds());
   const [comparedProducts, setComparedProducts] = useState<Product[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
 
@@ -68,6 +95,9 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
+  const [isFaceGuideOpen, setIsFaceGuideOpen] = useState(false);
+  const [isLensSimulatorOpen, setIsLensSimulatorOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isTrackerModalOpen, setIsTrackerModalOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
@@ -133,6 +163,17 @@ export default function App() {
     }
   };
 
+  const isAdminAuthenticatedRef = React.useRef(isAdminAuthenticated);
+  const currentViewRef = React.useRef(currentView);
+
+  useEffect(() => {
+    isAdminAuthenticatedRef.current = isAdminAuthenticated;
+  }, [isAdminAuthenticated]);
+
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
+
   useEffect(() => {
     const loadedProducts = getStoredProducts();
     const loadedOrders = getStoredOrders();
@@ -151,12 +192,14 @@ export default function App() {
       if (Array.isArray(orders)) setOrders(orders);
       if (settings) setSettings(settings);
 
-      // Trigger instant Toast notification in Admin/Store view when a new order arrives
+      // Trigger instant Toast notification ONLY for logged-in admin in admin panel view
       if (Array.isArray(newOrders) && newOrders.length > 0) {
-        const latest = newOrders[0];
-        const customerName = latest.customer?.fullName || 'مشتری';
-        const code = latest.orderCode || latest.id.slice(-6);
-        showToast(`🔔 سفارش جدید ثبت شد! کد سفارش: ${code} - مشتری: ${customerName}`);
+        if (isAdminAuthenticatedRef.current && currentViewRef.current === 'admin') {
+          const latest = newOrders[0];
+          const customerName = latest.customer?.fullName || 'مشتری';
+          const code = latest.orderCode || latest.id.slice(-6);
+          showToast(`🔔 سفارش جدید ثبت شد! کد سفارش: ${code} - مشتری: ${customerName}`);
+        }
       }
     });
 
@@ -169,6 +212,12 @@ export default function App() {
       setIsPasscodeModalOpen(true);
     } else {
       setCurrentView('store');
+    }
+
+    const prodParam = params.get('product');
+    if (prodParam && loadedProducts.length > 0) {
+      const match = loadedProducts.find(p => p.id === prodParam || p.code?.toLowerCase() === prodParam.toLowerCase());
+      if (match) setSelectedProduct(match);
     }
 
     return () => {
@@ -284,6 +333,7 @@ export default function App() {
 
   // Compare Handler
   const handleToggleCompare = (product: Product) => {
+    sound.playPop();
     setComparedProducts((prev) => {
       const exists = prev.some((p) => p.id === product.id);
       if (exists) {
@@ -324,11 +374,14 @@ export default function App() {
     if (blocked) {
       showToast(`موجودی «${product.title}» بیشتر از این نیست`);
     } else {
+      sound.playCartAdd();
       showToast(`${product.title} به سبد خرید اضافه شد`);
     }
   };
 
   const handleUpdateCartQuantity = (productId: string, delta: number) => {
+    if (delta > 0) sound.playCartAdd();
+    else sound.playCartRemove();
     setCartItems((prev) =>
       prev
         .map((item) => {
@@ -343,13 +396,28 @@ export default function App() {
   };
 
   const handleRemoveFromCart = (productId: string) => {
+    sound.playCartRemove();
     setCartItems((prev) => prev.filter((item) => item.product.id !== productId));
     showToast('محصول از سبد خرید حذف شد');
   };
 
+  const handleToggleWishlist = (productId: string) => {
+    sound.playWishlist();
+    const updated = toggleWishlistId(productId);
+    setWishlistIds(updated);
+    const isIn = updated.includes(productId);
+    const prod = products.find((p) => p.id === productId);
+    showToast(isIn ? `«${prod?.title || 'عینک'}» به نشان‌شده‌ها اضافه شد ❤️` : `از لیست نشان‌شده‌ها حذف شد`);
+  };
+
   // Admin Product Actions
-  const handleSaveProduct = (product: Product) => {
-    const updatedProd = { ...product, updatedAt: new Date().toISOString() };
+  const handleSaveProduct = async (product: Product) => {
+    const updatedProd: Product = { 
+      ...product, 
+      updatedAt: new Date().toISOString() 
+    };
+    
+    // Immediate UI update
     setProducts((prev) => {
       const index = prev.findIndex((p) => p.id === product.id);
       let updated: Product[];
@@ -359,10 +427,11 @@ export default function App() {
       } else {
         updated = [updatedProd, ...prev];
       }
-      saveStoredProducts(updated);
       return updated;
     });
-    showToast('عینک با موفقیت ذخیره شد');
+
+    // Atomic sync across LocalStorage, Express server, and Firestore
+    await saveSingleProduct(updatedProd);
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -473,17 +542,82 @@ export default function App() {
     saveStoredSettings(newSettings).then(() => syncWithServer());
   };
 
-  // Filter products for customer view
-  const filteredProducts = products.filter((p) => {
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    const matchesSearch =
-      !searchQuery ||
-      p.title.includes(searchQuery) ||
-      p.code.includes(searchQuery) ||
-      p.frameType?.includes(searchQuery) ||
-      p.description?.includes(searchQuery);
+  // Handle Category & Search sync with filters
+  const handleSelectCategory = (cat: CategoryType) => {
+    setSelectedCategory(cat);
+    setFilters((prev) => ({ ...prev, category: cat }));
+  };
 
-    return matchesCategory && matchesSearch;
+  const handleSearchChange = (q: string) => {
+    setSearchQuery(q);
+    setFilters((prev) => ({ ...prev, search: q }));
+  };
+
+  // Filter products for customer view with multi-criteria search and sorting
+  const filteredProducts = products.filter((p) => {
+    // 1. Category match
+    const activeCat = filters.category || selectedCategory;
+    const matchesCategory = activeCat === 'all' || p.category === activeCat;
+    
+    // 2. Search match
+    const q = (filters.search || searchQuery).trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      p.title.toLowerCase().includes(q) ||
+      p.code.toLowerCase().includes(q) ||
+      p.frameType?.toLowerCase().includes(q) ||
+      p.lensColor?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q);
+
+    // 3. Price range
+    const matchesPrice = p.price >= filters.minPrice && p.price <= filters.maxPrice;
+
+    // 4. Stock status
+    const matchesStock = !filters.onlyInStock || p.stock > 0;
+
+    // 5. Discount status
+    const matchesDiscount = !filters.onlyDiscounted || (!!p.originalPrice && p.originalPrice > p.price);
+
+    // 6. Polarized status
+    const matchesPolarized = !filters.onlyPolarized || (p.uvProtection?.includes('Polarized') || p.description?.includes('پلاریزه') || false);
+
+    // 7. UV400 status
+    const matchesUV400 = !filters.onlyUV400 || (p.uvProtection?.includes('UV400') || p.uvProtection?.includes('400') || false);
+
+    // 8. Gender
+    const matchesGender = filters.gender === 'all' || p.gender === filters.gender;
+
+    // 9. Frame Material
+    const matchesMaterial = filters.frameMaterial === 'all' || p.frameType?.includes(filters.frameMaterial);
+
+    return (
+      matchesCategory &&
+      matchesSearch &&
+      matchesPrice &&
+      matchesStock &&
+      matchesDiscount &&
+      matchesPolarized &&
+      matchesUV400 &&
+      matchesGender &&
+      matchesMaterial
+    );
+  }).sort((a, b) => {
+    switch (filters.sortBy) {
+      case 'price-asc':
+        return a.price - b.price;
+      case 'price-desc':
+        return b.price - a.price;
+      case 'discount': {
+        const discA = a.originalPrice && a.originalPrice > a.price ? (a.originalPrice - a.price) / a.originalPrice : 0;
+        const discB = b.originalPrice && b.originalPrice > b.price ? (b.originalPrice - b.price) / b.originalPrice : 0;
+        return discB - discA;
+      }
+      case 'popular':
+        return (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0);
+      case 'newest':
+      default:
+        return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+    }
   });
 
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -498,14 +632,18 @@ export default function App() {
         onViewChange={handleViewChange}
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
+        wishlistCount={wishlistIds.length}
+        onOpenWishlist={() => setIsWishlistOpen(true)}
         comparedCount={comparedProducts.length}
         onOpenCompareModal={() => setIsCompareModalOpen(true)}
         onOpenTrackerModal={() => setIsTrackerModalOpen(true)}
         onOpenSupportModal={() => setIsSupportOpen(true)}
+        onOpenFaceGuide={() => setIsFaceGuideOpen(true)}
+        onOpenLensSimulator={() => setIsLensSimulatorOpen(true)}
         selectedCategory={selectedCategory}
-        onSelectCategory={setSelectedCategory}
+        onSelectCategory={handleSelectCategory}
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchChange={handleSearchChange}
         settings={settings}
         onShowToast={showToast}
         isAdminAuthenticated={isAdminAuthenticated}
@@ -526,7 +664,18 @@ export default function App() {
               <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8">
                 
                 {/* Hero Section */}
-                <StoreHero settings={settings} />
+                <StoreHero 
+                  settings={settings} 
+                  onOpenFaceGuide={() => setIsFaceGuideOpen(true)}
+                />
+
+                {/* Advanced Filtering, Sorting and Search Bar */}
+                <FilterBar
+                  filters={filters}
+                  onChange={setFilters}
+                  totalProductsCount={products.length}
+                  filteredProductsCount={filteredProducts.length}
+                />
 
                 {/* Products Grid Header */}
                 <div className="flex items-center justify-between border-b border-zinc-800 pb-3 text-right dir-rtl">
@@ -534,21 +683,21 @@ export default function App() {
                     <h2 className="text-lg font-black text-white flex items-center gap-2">
                       <Glasses className="w-5 h-5 text-amber-400" />
                       <span>
-                        {selectedCategory === 'all'
+                        {filters.category === 'all'
                           ? 'ویترین کامل عینک‌ها'
                           : `عینک‌های دسته ${
-                              selectedCategory === 'sunglasses'
+                              filters.category === 'sunglasses'
                                 ? 'آفتابی'
-                                : selectedCategory === 'optical'
+                                : filters.category === 'optical'
                                 ? 'طبی'
-                                : selectedCategory === 'sport'
+                                : filters.category === 'sport'
                                 ? 'ورزشی'
                                 : 'یونی‌سکس'
                             }`}
                       </span>
                     </h2>
                     <p className="text-xs text-zinc-400 font-light mt-0.5">
-                      نمایش {filteredProducts.length} محصول از مجموعه {settings.storeName}
+                      نمایش {filteredProducts.length} محصول از مجموع {products.length} عینک در فروشگاه {settings.storeName}
                     </p>
                   </div>
 
@@ -569,27 +718,35 @@ export default function App() {
                       <Glasses className="w-8 h-8 stroke-[1.5]" />
                     </div>
                     <div className="max-w-md mx-auto space-y-1">
-                      <h3 className="text-base font-bold text-white">هنوز محصولی ثبت نشده است</h3>
+                      <h3 className="text-base font-bold text-white">عینکی با این مشخصات یافت نشد</h3>
                       <p className="text-xs text-zinc-400 leading-relaxed">
-                        اگر مدیر فروشگاه هستید، می‌توانید از طریق پنل مدیریت عکس‌ها، قیمت و مشخصات عینک‌های خود را وارد نمایید.
+                        می‌توانید فیلترهای جستجو را بازنشانی کرده یا عبارت دیگری را جستجو فرمایید.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                       <button
-                        onClick={() => handleViewChange('admin')}
+                        onClick={() => {
+                          setFilters({
+                            category: 'all',
+                            search: '',
+                            sortBy: 'newest',
+                            minPrice: 0,
+                            maxPrice: 5000000,
+                            onlyInStock: false,
+                            onlyDiscounted: false,
+                            onlyPolarized: false,
+                            onlyUV400: false,
+                            gender: 'all',
+                            frameMaterial: 'all',
+                          });
+                          setSelectedCategory('all');
+                          setSearchQuery('');
+                        }}
                         className="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all shadow-lg shadow-amber-500/20"
                       >
-                        <Plus className="w-4 h-4 stroke-[3]" />
-                        <span>ورود به پنل مدیریت و افزودن عینک</span>
-                      </button>
-
-                      <button
-                        onClick={handleLoadDemoProducts}
-                        className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                        <span>مشاهده چند نمونه تست</span>
+                        <RefreshCw className="w-4 h-4 stroke-[2.5]" />
+                        <span>پاک کردن همه فیلترها</span>
                       </button>
                     </div>
                   </div>
@@ -608,12 +765,17 @@ export default function App() {
                           onAddToCart={(p) => handleAddToCart(p, 1)}
                           isCompared={comparedProducts.some((cp) => cp.id === product.id)}
                           onToggleCompare={handleToggleCompare}
+                          isWishlisted={wishlistIds.includes(product.id)}
+                          onToggleWishlist={handleToggleWishlist}
                           onQuickView={(p) => setQuickViewProduct(p)}
                         />
                       ))}
                     </AnimatePresence>
                   </motion.div>
                 )}
+
+                {/* FAQ & Buying Guide */}
+                <StoreFaq faqs={settings.faqs} />
 
               </div>
             ) : (
@@ -715,6 +877,37 @@ export default function App() {
         settings={settings}
       />
 
+      {/* Customer Wishlist Drawer */}
+      <WishlistDrawer
+        isOpen={isWishlistOpen}
+        onClose={() => setIsWishlistOpen(false)}
+        products={products}
+        wishlistIds={wishlistIds}
+        onToggleWishlist={handleToggleWishlist}
+        onAddToCart={(prod) => handleAddToCart(prod, 1)}
+        onSelectProduct={(prod) => {
+          setSelectedProduct(prod);
+          setIsWishlistOpen(false);
+        }}
+      />
+
+      {/* Smart Face Shape Eyewear Guide Modal */}
+      <FaceShapeGuideModal
+        isOpen={isFaceGuideOpen}
+        onClose={() => setIsFaceGuideOpen(false)}
+        allProducts={products}
+        onSelectProduct={(prod) => {
+          setSelectedProduct(prod);
+          setIsFaceGuideOpen(false);
+        }}
+      />
+
+      {/* Lens Tint & UV Simulator Modal */}
+      <LensSimulatorModal
+        isOpen={isLensSimulatorOpen}
+        onClose={() => setIsLensSimulatorOpen(false)}
+      />
+
       {/* Checkout & Order Registration Modal */}
       <CheckoutModal
         isOpen={isCheckoutOpen}
@@ -743,6 +936,12 @@ export default function App() {
         order={selectedInvoiceOrder}
         onClose={() => setSelectedInvoiceOrder(null)}
         settings={settings}
+      />
+
+      {/* Realtime Live Social Proof Purchases Ticker */}
+      <SocialProofTicker
+        products={products}
+        onSelectProduct={(p) => setSelectedProduct(p)}
       />
 
       {/* Admin Passcode Modal */}
@@ -863,7 +1062,7 @@ export default function App() {
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
 
       {/* Intro Animated Entrance Screen */}
-      {showIntroSplash && (
+      {showIntroSplash && settings.showIntroSplash !== false && (
         <IntroSplash
           settings={settings}
           onFinish={() => setShowIntroSplash(false)}
@@ -871,7 +1070,7 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <footer className="bg-zinc-950 border-t border-zinc-800/80 pt-10 pb-8 px-4 sm:px-6 mt-16 text-right dir-rtl text-xs text-zinc-400">
+      <footer className="bg-zinc-950 border-t border-zinc-800/80 pt-10 pb-24 sm:pb-8 px-4 sm:px-6 mt-16 text-right dir-rtl text-xs text-zinc-400">
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b border-zinc-800/80 pb-8">
             {/* Col 1: About */}
@@ -925,6 +1124,18 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Mobile Sticky Bottom Navigation */}
+      <MobileBottomNav
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        cartCount={cartItems.reduce((acc, i) => acc + i.quantity, 0)}
+        onOpenCart={() => setIsCartOpen(true)}
+        wishlistCount={wishlistIds.length}
+        onOpenWishlist={() => setIsWishlistOpen(true)}
+        onOpenTracker={() => setIsTrackerModalOpen(true)}
+        onOpenSupport={() => setIsSupportOpen(true)}
+      />
 
     </div>
   );

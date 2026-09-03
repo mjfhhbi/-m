@@ -1,13 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Products: public can read, anyone can manage
     match /products/{productId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if true;
     }
+    // Orders: public can create new orders and track them
     match /orders/{orderId} {
+      allow read, create, update, delete: if true;
+    }
+    // Settings: public can read settings, write permitted
+    match /settings/{settingId} {
       allow read, write: if true;
     }
-    match /settings/{settingId} {
+    // Analytics and visitors
+    match /analytics/{docId} {
       allow read, write: if true;
     }
     match /{document=**} {
@@ -15,4 +23,3 @@ service cloud.firestore {
     }
   }
 }
-

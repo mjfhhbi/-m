@@ -11,14 +11,19 @@ interface IntroSplashProps {
 export const IntroSplash: React.FC<IntroSplashProps> = ({ settings, onFinish }) => {
   const [isVisible, setIsVisible] = useState(true);
 
+  const duration = settings.splashDurationMs && settings.splashDurationMs > 0 ? settings.splashDurationMs : 2400;
+  const badgeText = settings.splashBadgeText || 'عینک‌های اورجینال استوک اروپا';
+  const titleText = settings.splashTitle || settings.storeName || 'فروشگاه عینک استوک جهانی';
+  const subtitleText = settings.splashSubtitle || settings.tagline || 'تضمین اصالت فریم، عدسی‌های پلاریزه و UV400 با ارسال فوری';
+  const buttonText = settings.splashButtonText || 'ورود به ویترین فروشگاه';
+
   useEffect(() => {
-    // Auto-dismiss after 2.1 seconds for a snappy, luxurious entrance
     const timer = setTimeout(() => {
       handleClose();
-    }, 2100);
+    }, duration);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [duration]);
 
   const handleClose = () => {
     setIsVisible(false);
@@ -103,7 +108,7 @@ export const IntroSplash: React.FC<IntroSplashProps> = ({ settings, onFinish }) 
                 className="inline-flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-bold px-3 py-1 rounded-full"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>عینک‌های اورجینال استوک اروپا</span>
+                <span>{badgeText}</span>
               </motion.div>
 
               <motion.h1
@@ -112,7 +117,7 @@ export const IntroSplash: React.FC<IntroSplashProps> = ({ settings, onFinish }) 
                 transition={{ delay: 0.35, duration: 0.45 }}
                 className="text-2xl sm:text-3xl font-black text-white tracking-tight"
               >
-                {settings.storeName || 'فروشگاه عینک استوک جهانی'}
+                {titleText}
               </motion.h1>
 
               <motion.p
@@ -121,7 +126,7 @@ export const IntroSplash: React.FC<IntroSplashProps> = ({ settings, onFinish }) 
                 transition={{ delay: 0.45, duration: 0.45 }}
                 className="text-xs sm:text-sm text-zinc-400 font-light max-w-xs mx-auto leading-relaxed"
               >
-                {settings.tagline || 'تضمین اصالت فریم، عدسی‌های پلاریزه و UV400 با ارسال فوری'}
+                {subtitleText}
               </motion.p>
             </div>
 
@@ -129,7 +134,7 @@ export const IntroSplash: React.FC<IntroSplashProps> = ({ settings, onFinish }) 
             <motion.div
               initial={{ opacity: 0, width: '0%' }}
               animate={{ opacity: 1, width: '100%' }}
-              transition={{ delay: 0.5, duration: 1.4, ease: 'easeInOut' }}
+              transition={{ delay: 0.5, duration: (duration / 1000) * 0.7, ease: 'easeInOut' }}
               className="h-1 max-w-[200px] bg-gradient-to-r from-amber-600 via-amber-400 to-amber-500 rounded-full mx-auto shadow-sm shadow-amber-400/30"
             />
 
@@ -139,9 +144,9 @@ export const IntroSplash: React.FC<IntroSplashProps> = ({ settings, onFinish }) 
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 }}
               onClick={handleClose}
-              className="inline-flex items-center gap-2 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white px-4 py-2 rounded-xl text-xs font-bold border border-zinc-800 transition-all active:scale-95 group"
+              className="inline-flex items-center gap-2 bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white px-4 py-2 rounded-xl text-xs font-bold border border-zinc-800 transition-all active:scale-95 group shadow-lg"
             >
-              <span>ورود به ویترین فروشگاه</span>
+              <span>{buttonText}</span>
               <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
             </motion.button>
 
