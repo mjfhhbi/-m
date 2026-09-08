@@ -53,5 +53,74 @@
     "ntfyTopic": "stock_jahani_orders",
     "ntfyServerUrl": "https://ntfy.sh"
   },
-  "dataVersion": 1787093000000
+  "analytics": {
+    "totalViews": 0,
+    "uniqueVisitors": 0,
+    "todayViews": 0,
+    "todayUnique": 0,
+    "lastDate": "2026-09-03",
+    "dailyStats": [],
+    "recentVisits": []
+  },
+  "auditLogs": [
+    {
+      "id": "audit-1788433146768-4ghxj",
+      "targetType": "order",
+      "targetId": "ORD-123456",
+      "action": "update",
+      "actor": "سیستم (وب‌هوک Firestore onUpdate)",
+      "actorIp": "",
+      "summary": "وب‌هوک فایربیس onUpdate: به‌روزرسانی سفارش #ORD-123456",
+      "details": {
+        "before": {
+          "id": "ORD-123456",
+          "status": "pending",
+          "totalAmount": 1500000,
+          "customer": {
+            "fullName": "سهراب سپهری",
+            "phone": "09121112233"
+          }
+        },
+        "after": {
+          "id": "ORD-123456",
+          "status": "shipped",
+          "postalTrackingCode": "1982736450123",
+          "totalAmount": 1500000,
+          "customer": {
+            "fullName": "سهراب سپهری",
+            "phone": "09121112233"
+          }
+        },
+        "sentToTelegram": false
+      },
+      "timestamp": "2026-09-03T10:59:06.768Z"
+    },
+    {
+      "id": "audit-1788433140281-e8nh7",
+      "targetType": "product",
+      "targetId": "test-prod-101",
+      "action": "update",
+      "actor": "مدیریت (تست وب‌هوک تلگرام)",
+      "actorIp": "",
+      "summary": "تست وب‌هوک Firestore onUpdate و ارسال پیام به تلگرام برای محصول: «عینک تست وب‌هوک فایربیس»",
+      "details": {
+        "test": true
+      },
+      "timestamp": "2026-09-03T10:59:00.281Z"
+    },
+    {
+      "id": "audit-1788433135296-th28i",
+      "targetType": "order",
+      "targetId": "test-ord-101",
+      "action": "status_change",
+      "actor": "مدیریت (تست وب‌هوک تلگرام)",
+      "actorIp": "",
+      "summary": "تست وب‌هوک Firestore onUpdate و ارسال نوتیفیکیشن تلگرام برای سفارش #TEST-9988",
+      "details": {
+        "test": true
+      },
+      "timestamp": "2026-09-03T10:58:55.296Z"
+    }
+  ],
+  "dataVersion": 1788433146768
 }

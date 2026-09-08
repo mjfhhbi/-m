@@ -8,9 +8,11 @@ import { ImageLazyLoader } from './ImageLazyLoader';
 interface WishlistDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  wishlistProductIds: string[];
+  wishlistIds?: string[];
+  wishlistProductIds?: string[];
   products: Product[];
-  onRemoveFromWishlist: (productId: string) => void;
+  onToggleWishlist?: (productOrId: Product | string) => void;
+  onRemoveFromWishlist?: (productId: string) => void;
   onAddToCart: (product: Product) => void;
   onSelectProduct: (product: Product) => void;
 }
@@ -18,15 +20,26 @@ interface WishlistDrawerProps {
 export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
   isOpen,
   onClose,
+  wishlistIds,
   wishlistProductIds,
-  products,
+  products = [],
+  onToggleWishlist,
   onRemoveFromWishlist,
   onAddToCart,
   onSelectProduct,
 }) => {
   if (!isOpen) return null;
 
-  const savedProducts = products.filter((p) => wishlistProductIds.includes(p.id));
+  const effectiveWishlistIds = wishlistIds || wishlistProductIds || [];
+  const savedProducts = (products || []).filter((p) => p && effectiveWishlistIds.includes(p.id));
+
+  const handleRemove = (productId: string) => {
+    if (onRemoveFromWishlist) {
+      onRemoveFromWishlist(productId);
+    } else if (onToggleWishlist) {
+      onToggleWishlist(productId);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -131,7 +144,7 @@ export const WishlistDrawer: React.FC<WishlistDrawerProps> = ({
                       <ShoppingBag className="w-4 h-4 stroke-[2.5]" />
                     </button>
                     <button
-                      onClick={() => onRemoveFromWishlist(prod.id)}
+                      onClick={() => handleRemove(prod.id)}
                       className="p-2 rounded-xl bg-zinc-800 hover:bg-rose-950 hover:text-rose-400 text-zinc-400 transition-colors"
                       title="حذف از نشان‌شده‌ها"
                     >

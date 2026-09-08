@@ -21,6 +21,7 @@ import {
   subscribeToFirestore,
   deleteProductFromFirestore,
   deleteOrderFromFirestore,
+  updateOrderStatusRemote,
   mergeProductsList,
   mergeOrdersList,
   DEMO_PRODUCTS,
@@ -53,7 +54,6 @@ import { SeoHead } from './components/SeoHead';
 import { Toast } from './components/Toast';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { FilterBar, FilterState } from './components/FilterBar';
-import { SocialProofTicker } from './components/SocialProofTicker';
 import { sound } from './utils/audio';
 
 import { Glasses, Plus, ShieldCheck, Sparkles, RefreshCw, ShoppingBag, Instagram, Phone, Send, Lock, X, KeyRound, Headphones, MessageSquare, ArrowRightLeft, Users, Eye, Activity, Radio } from 'lucide-react';
@@ -401,8 +401,9 @@ export default function App() {
     showToast('محصول از سبد خرید حذف شد');
   };
 
-  const handleToggleWishlist = (productId: string) => {
+  const handleToggleWishlist = (productOrId: Product | string) => {
     sound.playWishlist();
+    const productId = typeof productOrId === 'string' ? productOrId : productOrId.id;
     const updated = toggleWishlistId(productId);
     setWishlistIds(updated);
     const isIn = updated.includes(productId);
@@ -436,6 +437,7 @@ export default function App() {
 
   const handleDeleteProduct = async (productId: string) => {
     deleteProductFromFirestore(productId);
+    fetch(`/api/products/${productId}`, { method: 'DELETE' }).catch(() => {});
     setProducts((prev) => {
       const updated = prev.filter((p) => p.id !== productId);
       saveStoredProducts(updated);
@@ -515,6 +517,9 @@ export default function App() {
       saveStoredOrders(updated);
       return updated;
     });
+
+    // Atomic server-side mutation with audit logging & Telegram webhook notifications
+    updateOrderStatusRemote(orderId, status, postalTrackingCode, adminNote, 'مدیریت (پنل ادمین)');
   };
 
   const handleUpdateOrderCustomer = (orderId: string, updatedCustomer: OrderCustomer) => {
@@ -528,6 +533,7 @@ export default function App() {
 
   const handleDeleteOrder = async (orderId: string) => {
     deleteOrderFromFirestore(orderId);
+    fetch(`/api/orders/${orderId}`, { method: 'DELETE' }).catch(() => {});
     setOrders((prev) => {
       const updated = prev.filter((o) => o.id !== orderId);
       saveStoredOrders(updated);
@@ -806,6 +812,8 @@ export default function App() {
         onAddToCart={(prod, qty) => handleAddToCart(prod, qty)}
         allProducts={products}
         onSelectProduct={(p) => setSelectedProduct(p)}
+        isWishlisted={selectedProduct ? wishlistIds.includes(selectedProduct.id) : false}
+        onToggleWishlist={handleToggleWishlist}
       />
 
       {/* Quick View Modal */}
@@ -814,6 +822,8 @@ export default function App() {
         onClose={() => setQuickViewProduct(null)}
         onAddToCart={(prod, qty) => handleAddToCart(prod, qty)}
         onOpenFullDetail={(prod) => setSelectedProduct(prod)}
+        isWishlisted={quickViewProduct ? wishlistIds.includes(quickViewProduct.id) : false}
+        onToggleWishlist={handleToggleWishlist}
       />
 
       {/* Product Compare Modal */}
@@ -936,12 +946,6 @@ export default function App() {
         order={selectedInvoiceOrder}
         onClose={() => setSelectedInvoiceOrder(null)}
         settings={settings}
-      />
-
-      {/* Realtime Live Social Proof Purchases Ticker */}
-      <SocialProofTicker
-        products={products}
-        onSelectProduct={(p) => setSelectedProduct(p)}
       />
 
       {/* Admin Passcode Modal */}

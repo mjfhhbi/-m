@@ -42,7 +42,7 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({
 
   const averageRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
-    : '5.0';
+    : null;
 
   return (
     <div className="space-y-4 pt-4 border-t border-zinc-800 text-right dir-rtl">
@@ -54,18 +54,24 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({
             <span>نظرات و تجربیات خریداران ({reviews.length})</span>
           </h4>
           <div className="flex items-center gap-1.5 mt-1">
-            <div className="flex items-center text-amber-400">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <Star
-                  key={s}
-                  className={`w-3.5 h-3.5 ${
-                    s <= Math.round(Number(averageRating)) ? 'fill-amber-400' : 'text-zinc-600'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-xs font-bold text-amber-400 font-mono">{averageRating}</span>
-            <span className="text-[10px] text-zinc-500">از ۵ امتیاز رضایت مشتریان</span>
+            {averageRating ? (
+              <>
+                <div className="flex items-center text-amber-400">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                      key={s}
+                      className={`w-3.5 h-3.5 ${
+                        s <= Math.round(Number(averageRating)) ? 'fill-amber-400' : 'text-zinc-600'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs font-bold text-amber-400 font-mono">{averageRating}</span>
+                <span className="text-[10px] text-zinc-500">از ۵ امتیاز رضایت مشتریان</span>
+              </>
+            ) : (
+              <span className="text-[11px] text-zinc-500">هنوز امتیازی ثبت نشده است</span>
+            )}
           </div>
         </div>
 
@@ -147,42 +153,53 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({
       )}
 
       {/* Reviews List */}
-      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-        {reviews.map((rev) => (
-          <div
-            key={rev.id}
-            className="bg-zinc-950/60 border border-zinc-800/60 p-3 rounded-xl space-y-1.5"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 text-xs font-bold">
-                  <User className="w-3.5 h-3.5 text-amber-400" />
-                </span>
-                <span className="text-xs font-bold text-zinc-200">{rev.customerName}</span>
-                {rev.isVerifiedPurchase && (
-                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-md">
-                    <CheckCircle2 className="w-2.5 h-2.5" />
-                    <span>خریدار تایید شده</span>
+      {reviews.length > 0 ? (
+        <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+          {reviews.map((rev) => (
+            <div
+              key={rev.id}
+              className="bg-zinc-950/60 border border-zinc-800/60 p-3 rounded-xl space-y-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 text-xs font-bold">
+                    <User className="w-3.5 h-3.5 text-amber-400" />
                   </span>
-                )}
+                  <span className="text-xs font-bold text-zinc-200">{rev.customerName}</span>
+                  {rev.isVerifiedPurchase && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-md">
+                      <CheckCircle2 className="w-2.5 h-2.5" />
+                      <span>خریدار تایید شده</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center text-amber-400">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                      key={s}
+                      className={`w-3 h-3 ${s <= rev.rating ? 'fill-amber-400' : 'text-zinc-700'}`}
+                    />
+                  ))}
+                </div>
               </div>
 
-              <div className="flex items-center text-amber-400">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <Star
-                    key={s}
-                    className={`w-3 h-3 ${s <= rev.rating ? 'fill-amber-400' : 'text-zinc-700'}`}
-                  />
-                ))}
-              </div>
+              <p className="text-xs text-zinc-300 leading-relaxed pt-0.5">
+                {rev.comment}
+              </p>
             </div>
-
-            <p className="text-xs text-zinc-300 leading-relaxed pt-0.5">
-              {rev.comment}
-            </p>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-zinc-950/40 border border-dashed border-zinc-800/80 p-4 rounded-xl text-center space-y-1">
+          <p className="text-xs text-zinc-400 font-medium">
+            هنوز نظری برای این عینک ثبت نشده است.
+          </p>
+          <p className="text-[11px] text-zinc-500">
+            شما می‌توانید پس از خرید، اولین نفری باشید که تجربه واقعی خود را با سایر خریداران به اشتراک می‌گذارد.
+          </p>
+        </div>
+      )}
     </div>
   );
 };

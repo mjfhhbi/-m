@@ -63,6 +63,22 @@
         "aboutUs": { "type": "string" },
         "adminPassword": { "type": "string" }
       }
+    },
+    "audit_logs": {
+      "title": "Audit Logs Collection",
+      "description": "Historical live audit trail of product and order mutations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "action": { "type": "string" },
+        "actor": { "type": "string" },
+        "summary": { "type": "string" },
+        "details": { "type": "object" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "targetType", "targetId", "action", "actor", "summary", "timestamp"]
     }
   }
 }

@@ -14,7 +14,8 @@ import {
   Share2,
   Truck,
   CheckCircle2,
-  ZoomIn
+  ZoomIn,
+  Heart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ImageLazyLoader } from './ImageLazyLoader';
@@ -27,6 +28,8 @@ interface ProductDetailModalProps {
   onClose: () => void;
   onAddToCart: (product: Product, quantity: number) => void;
   onSelectProduct?: (product: Product) => void;
+  isWishlisted?: boolean;
+  onToggleWishlist?: (product: Product) => void;
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -35,6 +38,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onClose,
   onAddToCart,
   onSelectProduct,
+  isWishlisted = false,
+  onToggleWishlist,
 }) => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -232,6 +237,24 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </span>
                   
                   <div className="flex items-center gap-2">
+                    {onToggleWishlist && (
+                      <button
+                        onClick={() => {
+                          sound.playWishlist();
+                          onToggleWishlist(product);
+                        }}
+                        className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all ${
+                          isWishlisted
+                            ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-bold'
+                            : 'bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 border-zinc-700/60'
+                        }`}
+                        title={isWishlisted ? 'حذف از نشان‌شده‌ها' : 'نشان کردن این عینک'}
+                      >
+                        <Heart className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
+                        <span>{isWishlisted ? 'نشان شده' : 'نشان کردن'}</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={async () => {
                         sound.playPop();
@@ -389,29 +412,49 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={handleAddToCart}
-                  disabled={product.stock <= 0}
-                  className={`w-full py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98] ${
-                    product.stock <= 0
-                      ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                      : added
-                      ? 'bg-emerald-500 text-zinc-950 shadow-emerald-500/20'
-                      : 'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 shadow-amber-500/20'
-                  }`}
-                >
-                  {added ? (
-                    <>
-                      <Check className="w-5 h-5 stroke-[2.5]" />
-                      <span>با موفقیت به سبد خرید افزوده شد</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingBag className="w-5 h-5 stroke-[2.5]" />
-                      <span>{product.stock <= 0 ? 'موجودی این محصول به پایان رسیده' : 'افزودن به سبد خرید'}</span>
-                    </>
+                <div className="flex gap-2.5 items-center">
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={product.stock <= 0}
+                    className={`flex-1 py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98] ${
+                      product.stock <= 0
+                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                        : added
+                        ? 'bg-emerald-500 text-zinc-950 shadow-emerald-500/20'
+                        : 'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 shadow-amber-500/20'
+                    }`}
+                  >
+                    {added ? (
+                      <>
+                        <Check className="w-5 h-5 stroke-[2.5]" />
+                        <span>با موفقیت به سبد خرید افزوده شد</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingBag className="w-5 h-5 stroke-[2.5]" />
+                        <span>{product.stock <= 0 ? 'موجودی این محصول به پایان رسیده' : 'افزودن به سبد خرید'}</span>
+                      </>
+                    )}
+                  </button>
+
+                  {onToggleWishlist && (
+                    <button
+                      onClick={() => {
+                        sound.playWishlist();
+                        onToggleWishlist(product);
+                      }}
+                      className={`py-3.5 px-4 rounded-2xl text-xs font-black flex items-center justify-center gap-2 transition-all border shrink-0 active:scale-[0.98] shadow-lg ${
+                        isWishlisted
+                          ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 hover:bg-rose-500/30'
+                          : 'bg-zinc-900 hover:bg-zinc-850 border-zinc-800 text-zinc-300 hover:text-rose-400'
+                      }`}
+                      title={isWishlisted ? 'حذف از نشان‌شده‌ها' : 'نشان کردن عینک'}
+                    >
+                      <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
+                      <span className="hidden sm:inline font-bold">{isWishlisted ? 'نشان شده' : 'نشان کردن'}</span>
+                    </button>
                   )}
-                </button>
+                </div>
               </div>
 
             </div>

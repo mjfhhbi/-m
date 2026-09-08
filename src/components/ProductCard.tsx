@@ -136,14 +136,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   sound.playWishlist();
                   onToggleWishlist(product);
                 }}
-                className={`p-1.5 rounded-full backdrop-blur-md transition-all shadow-md ${
+                className={`p-2 rounded-full backdrop-blur-md transition-all shadow-md active:scale-90 ${
                   isWishlisted
-                    ? 'bg-rose-500/90 text-white fill-white'
-                    : 'bg-zinc-950/70 text-zinc-400 hover:text-rose-400 hover:bg-zinc-900 border border-zinc-800'
+                    ? 'bg-rose-500 text-white fill-white shadow-rose-500/30'
+                    : 'bg-zinc-950/80 text-zinc-400 hover:text-rose-400 hover:bg-zinc-900 border border-zinc-700/80'
                 }`}
-                title={isWishlisted ? 'حذف از نشان‌شده‌ها' : 'نشان کردن عینک'}
+                title={isWishlisted ? 'حذف از نشان‌شده‌ها' : 'نشان کردن عینک (افزودن به علاقه‌مندی‌ها)'}
+                aria-label={isWishlisted ? 'حذف از نشان‌شده‌ها' : 'نشان کردن عینک'}
               >
-                <Heart className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-white' : ''}`} />
+                <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-white text-white' : ''}`} />
               </button>
             )}
 

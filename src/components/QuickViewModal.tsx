@@ -10,7 +10,8 @@ import {
   Plus,
   Minus,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Heart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ImageLazyLoader } from './ImageLazyLoader';
@@ -20,6 +21,8 @@ interface QuickViewModalProps {
   onClose: () => void;
   onAddToCart: (product: Product, quantity: number) => void;
   onOpenFullDetail?: (product: Product) => void;
+  isWishlisted?: boolean;
+  onToggleWishlist?: (product: Product) => void;
 }
 
 export const QuickViewModal: React.FC<QuickViewModalProps> = ({
@@ -27,6 +30,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   onClose,
   onAddToCart,
   onOpenFullDetail,
+  isWishlisted = false,
+  onToggleWishlist,
 }) => {
   const [selectedImgIndex, setSelectedImgIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -245,6 +250,20 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                         : 'افزودن به سبد خرید'}
                     </span>
                   </button>
+
+                  {onToggleWishlist && (
+                    <button
+                      onClick={() => onToggleWishlist(product)}
+                      className={`p-2.5 rounded-xl border transition-all flex items-center justify-center shadow-md active:scale-95 ${
+                        isWishlisted
+                          ? 'bg-rose-500/20 border-rose-500/50 text-rose-400'
+                          : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-rose-400'
+                      }`}
+                      title={isWishlisted ? 'حذف از نشان‌شده‌ها' : 'نشان کردن عینک'}
+                    >
+                      <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
+                    </button>
+                  )}
                 </div>
 
                 {onOpenFullDetail && (

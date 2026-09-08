@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Order, StoreSettings, OrderStatus, CategoryType, CategoryItem, CouponCode, VisitorStats, FaqItemSetting } from '../types';
+import { Product, Order, StoreSettings, OrderStatus, CategoryType, CategoryItem, CouponCode, VisitorStats, FaqItemSetting, AuditLogEntry } from '../types';
 import { 
   formatToman, 
   fileToBase64, 
@@ -15,7 +15,12 @@ import {
   toPersianDigits,
   parseNumberInput,
   tomanToWords,
-  GLASSES_IMAGE_PRESETS
+  GLASSES_IMAGE_PRESETS,
+  subscribeToAuditLogs,
+  fetchAuditLogs,
+  clearAuditLogsRemote,
+  triggerTestFirestoreWebhook,
+  recordAuditLog
 } from '../utils/storage';
 import { 
   Plus, 
@@ -69,7 +74,8 @@ import {
   ChevronUp,
   FileText,
   Mail,
-  RotateCcw
+  RotateCcw,
+  History
 } from 'lucide-react';
 
 import {
@@ -119,12 +125,81 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onOpenInvoice,
   onRefreshData,
 }) => {
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'settings' | 'analytics' | 'coupons' | 'seo'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'settings' | 'analytics' | 'coupons' | 'seo' | 'audit'>('products');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [visitorStats, setVisitorStats] = useState<VisitorStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+  // Live Audit Log State
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false);
+  const [auditFilterType, setAuditFilterType] = useState<'all' | 'product' | 'order' | 'settings'>('all');
+  const [auditFilterAction, setAuditFilterAction] = useState<'all' | 'create' | 'update' | 'delete' | 'status_change' | 'webhook_trigger'>('all');
+  const [auditSearch, setAuditSearch] = useState('');
+  const [testingWebhook, setTestingWebhook] = useState<'order' | 'product' | null>(null);
+  const [testWebhookResult, setTestWebhookResult] = useState<{ success: boolean; message: string; payload?: any } | null>(null);
+  const [isClearingLogs, setIsClearingLogs] = useState(false);
+  const [selectedAuditLog, setSelectedAuditLog] = useState<AuditLogEntry | null>(null);
+
+  const loadAuditLogs = async () => {
+    setIsLoadingAuditLogs(true);
+    try {
+      const logs = await fetchAuditLogs();
+      if (logs) setAuditLogs(logs);
+    } catch (e) {
+      console.warn('Failed to load audit logs:', e);
+    } finally {
+      setIsLoadingAuditLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAuditLogs();
+    const unsub = subscribeToAuditLogs((logs) => {
+      setAuditLogs(logs);
+      setIsLoadingAuditLogs(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleTestWebhook = async (type: 'order' | 'product') => {
+    setTestingWebhook(type);
+    setTestWebhookResult(null);
+    try {
+      const res = await triggerTestFirestoreWebhook(type, `تست دستی وب‌هوک Firestore onUpdate برای ${type === 'order' ? 'سفارش' : 'عینک'}`);
+      setTestWebhookResult(res);
+      if (res.success) {
+        onShowToast(`نوتیفیکیشن وب‌هوک ${type === 'order' ? 'سفارش' : 'عینک'} با موفقیت به تلگرام ارسال شد`);
+      } else {
+        onShowToast(`پاسخ وب‌هوک: ${res.message}`);
+      }
+    } catch (err: any) {
+      setTestWebhookResult({ success: false, message: err?.message || 'خطا در فراخوانی وب‌هوک' });
+      onShowToast('خطا در اجرای تست وب‌هوک');
+    } finally {
+      setTestingWebhook(null);
+    }
+  };
+
+  const handleClearAuditLogs = async () => {
+    if (!window.confirm('آیا از پاکسازی تاریخچه لاگ‌های حسابرسی مطمئن هستید؟')) return;
+    setIsClearingLogs(true);
+    try {
+      const ok = await clearAuditLogsRemote();
+      if (ok) {
+        setAuditLogs([]);
+        onShowToast('تاریخچه لاگ‌های حسابرسی پاکسازی شد');
+      } else {
+        onShowToast('خطا در پاکسازی لاگ‌ها');
+      }
+    } catch (e) {
+      onShowToast('خطا در پاکسازی لاگ‌ها');
+    } finally {
+      setIsClearingLogs(false);
+    }
+  };
 
   const loadVisitorStats = async () => {
     setIsLoadingStats(true);
@@ -840,6 +915,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Settings className="w-4 h-4" />
           <span>تنظیمات فروشگاه</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('audit')}
+          className={`pb-3 text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeTab === 'audit'
+              ? 'border-amber-400 text-amber-400'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-purple-400" />
+          <span>لاگ تغییرات و وب‌هوک (Audit Log)</span>
+          {auditLogs.length > 0 && (
+            <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] px-1.5 py-0.5 rounded-full font-mono">
+              {toPersianDigits(auditLogs.length)}
+            </span>
+          )}
         </button>
 
         <div className="mr-auto pb-2 shrink-0">
@@ -3245,6 +3337,439 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </button>
         </div>
       )}
+
+      {/* TAB 7: AUDIT LOG & FIRESTORE WEBHOOK LIVE FEED */}
+      {activeTab === 'audit' && (
+        <div className="space-y-6">
+          {/* Header Info & Live Indicator */}
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="p-2 bg-purple-500/10 text-purple-400 rounded-xl border border-purple-500/20">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>لاگ حسابرسی و ثبت تغییرات زنده (Audit Log Feed)</span>
+                    <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      <span>پخش زنده مستقیم از Firestore</span>
+                    </span>
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    ردیابی اتمیک کلیه تغییرات محصولات، وضعیت سفارشات و وب‌هوک‌های لحظه‌ای ارسال‌شده به ربات تلگرام
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-stretch sm:self-auto">
+              <button
+                type="button"
+                onClick={loadAuditLogs}
+                disabled={isLoadingAuditLogs}
+                className="flex-1 sm:flex-initial bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                title="به‌روزرسانی فوری لاگ‌ها"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAuditLogs ? 'animate-spin' : ''}`} />
+                <span>به‌روزرسانی</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearAuditLogs}
+                disabled={isClearingLogs || auditLogs.length === 0}
+                className="flex-1 sm:flex-initial bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                title="پاکسازی تاریخچه لاگ‌ها"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>پاکسازی لاگ‌ها</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Webhook Architecture & Trigger Testing Section */}
+          <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-purple-950/30 border border-purple-500/30 p-5 rounded-2xl space-y-4 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/40">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>هندلر وب‌هوک رویدادهای آن‌آپدیت فایربیس (Firebase onUpdate Webhook)</span>
+                    <span className="bg-purple-900/60 text-purple-200 font-mono text-[10px] px-2 py-0.5 rounded border border-purple-500/30">
+                      /api/webhooks/firestore-onupdate
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    با وقوع هرگونه تغییر در داکیومنت‌های سفارشات یا محصولات، وب‌هوک فراخوانی شده و نوتیفیکیشن با جزئیات کامل به تلگرام ارسال می‌گردد.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons for Testing Webhooks */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleTestWebhook('order')}
+                  disabled={testingWebhook !== null}
+                  className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <Send className={`w-3.5 h-3.5 ${testingWebhook === 'order' ? 'animate-bounce' : ''}`} />
+                  <span>{testingWebhook === 'order' ? 'در حال ارسال تست...' : 'تست وب‌هوک سفارش'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTestWebhook('product')}
+                  disabled={testingWebhook !== null}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-purple-300 border border-purple-500/40 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <Send className={`w-3.5 h-3.5 ${testingWebhook === 'product' ? 'animate-bounce' : ''}`} />
+                  <span>{testingWebhook === 'product' ? 'در حال ارسال تست...' : 'تست وب‌هوک محصول'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Test result display */}
+            {testWebhookResult && (
+              <div className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+                testWebhookResult.success
+                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                  : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {testWebhookResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertTriangle className="w-4 h-4 text-rose-400" />}
+                  <span>{testWebhookResult.message}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTestWebhookResult(null)}
+                  className="text-zinc-400 hover:text-white text-xs"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Filter & Search Bar */}
+          <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl space-y-3">
+            <div className="flex flex-col md:flex-row items-center gap-3">
+              {/* Search */}
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                  placeholder="جستجو در لاگ‌ها (عنوان عینک، کد سفارش، اقدام‌کننده، شرح رویداد)..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pr-9 pl-4 py-2 text-xs text-white focus:outline-none focus:border-purple-500 placeholder:text-zinc-500"
+                />
+                {auditSearch && (
+                  <button
+                    onClick={() => setAuditSearch('')}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Target Type Filters */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+                <span className="text-[11px] text-zinc-400 font-bold whitespace-nowrap ml-1">بخش:</span>
+                {[
+                  { id: 'all', label: 'همه' },
+                  { id: 'order', label: 'سفارشات' },
+                  { id: 'product', label: 'عینک‌ها' },
+                  { id: 'settings', label: 'تنظیمات' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setAuditFilterType(tab.id as any)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${
+                      auditFilterType === tab.id
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Action Filters */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+                <span className="text-[11px] text-zinc-400 font-bold whitespace-nowrap ml-1">نوع اقدام:</span>
+                {[
+                  { id: 'all', label: 'همه' },
+                  { id: 'create', label: 'ثبت جدید' },
+                  { id: 'update', label: 'ویرایش' },
+                  { id: 'status_change', label: 'تغییر وضعیت' },
+                  { id: 'delete', label: 'حذف' },
+                  { id: 'webhook_trigger', label: 'وب‌هوک' },
+                ].map((act) => (
+                  <button
+                    key={act.id}
+                    type="button"
+                    onClick={() => setAuditFilterAction(act.id as any)}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-colors whitespace-nowrap ${
+                      auditFilterAction === act.id
+                        ? 'bg-amber-500 text-zinc-950'
+                        : 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400'
+                    }`}
+                  >
+                    {act.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Audit Logs Feed List */}
+          <div className="space-y-3">
+            {isLoadingAuditLogs && auditLogs.length === 0 ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center text-zinc-400">
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-purple-400" />
+                <p className="text-xs font-bold">در حال دریافت رویدادهای زنده از Firestore...</p>
+              </div>
+            ) : (() => {
+              const filtered = auditLogs.filter((log) => {
+                if (auditFilterType !== 'all' && log.targetType !== auditFilterType) return false;
+                if (auditFilterAction !== 'all' && log.action !== auditFilterAction) return false;
+                if (auditSearch.trim()) {
+                  const s = auditSearch.toLowerCase();
+                  const targetTitle = (log.targetTitle || '').toLowerCase();
+                  const targetId = (log.targetId || '').toLowerCase();
+                  const actor = (log.actor || '').toLowerCase();
+                  const details = (log.details || '').toLowerCase();
+                  if (!targetTitle.includes(s) && !targetId.includes(s) && !actor.includes(s) && !details.includes(s)) {
+                    return false;
+                  }
+                }
+                return true;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center text-zinc-400">
+                    <Activity className="w-10 h-10 mx-auto mb-3 text-zinc-600" />
+                    <p className="text-xs font-bold text-zinc-300">هیچ لاگ تغییری با فیلترهای انتخابی یافت نشد</p>
+                    <p className="text-[11px] text-zinc-500 mt-1">با ایجاد هر سفارش، تغییر قیمت، موجودی یا تست وب‌هوک، رکوردهای حسابرسی به صورت زنده در اینجا ثبت می‌گردند.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-2.5">
+                  {filtered.map((log) => {
+                    const actionColors: Record<string, { bg: string; text: string; border: string; label: string; icon: any }> = {
+                      create: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30', label: 'ایجاد جدید', icon: Plus },
+                      update: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30', label: 'ویرایش', icon: Edit },
+                      status_change: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30', label: 'تغییر وضعیت', icon: Clock },
+                      delete: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30', label: 'حذف', icon: Trash2 },
+                      webhook_trigger: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30', label: 'وب‌هوک Firestore', icon: Zap },
+                    };
+                    const color = actionColors[log.action] || actionColors.update;
+                    const ActionIcon = color.icon;
+
+                    const targetTypeLabels: Record<string, string> = {
+                      product: 'عینک / محصول',
+                      order: 'سفارش مشتری',
+                      settings: 'تنظیمات فروشگاه',
+                    };
+
+                    const timeString = new Date(log.timestamp).toLocaleString('fa-IR', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    });
+
+                    return (
+                      <div
+                        key={log.id}
+                        className="bg-zinc-900 hover:bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 transition-colors space-y-2.5"
+                      >
+                        {/* Top Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* Action badge */}
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${color.bg} ${color.text} ${color.border}`}>
+                              <ActionIcon className="w-3 h-3" />
+                              <span>{color.label}</span>
+                            </span>
+
+                            {/* Target Type badge */}
+                            <span className="bg-zinc-800 text-zinc-300 text-xs px-2.5 py-0.5 rounded-full border border-zinc-700 font-medium">
+                              {targetTypeLabels[log.targetType] || log.targetType}
+                            </span>
+
+                            {/* Actor badge */}
+                            <span className="inline-flex items-center gap-1 text-xs text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                              <Users className="w-3 h-3" />
+                              <span>توسط: <strong className="text-white">{log.actor || 'سیستم'}</strong></span>
+                            </span>
+                          </div>
+
+                          {/* Timestamp */}
+                          <div className="text-[11px] text-zinc-400 font-mono flex items-center gap-1.5" dir="ltr">
+                            <Clock className="w-3 h-3 text-zinc-500" />
+                            <span>{timeString}</span>
+                          </div>
+                        </div>
+
+                        {/* Middle Content */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                              {log.targetTitle ? (
+                                <span>{log.targetTitle}</span>
+                              ) : (
+                                <span className="font-mono text-zinc-300">شناسه: {log.targetId}</span>
+                              )}
+                              <span className="text-[10px] text-zinc-500 font-mono">({log.targetId})</span>
+                            </h4>
+                            <p className="text-xs text-zinc-300 mt-1 leading-relaxed">
+                              {log.details}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAuditLog(log)}
+                            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white px-2.5 py-1 rounded-lg text-xs font-medium border border-zinc-700 shrink-0 self-start sm:self-center transition-colors"
+                          >
+                            مشاهده جزئیات کامل
+                          </button>
+                        </div>
+
+                        {/* Diff Box if available */}
+                        {log.diff && Object.keys(log.diff).length > 0 && (
+                          <div className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 text-[11px] space-y-1.5 font-mono">
+                            <div className="text-zinc-500 text-[10px] font-sans font-bold mb-1">
+                              تغییرات پارامترها (Data Diff):
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {Object.entries(log.diff).map(([key, value]) => {
+                                const diffVal = (value as { old?: any; new?: any }) || {};
+                                const oldVal = typeof diffVal.old === 'object' ? JSON.stringify(diffVal.old) : String(diffVal.old ?? 'ندارد');
+                                const newVal = typeof diffVal.new === 'object' ? JSON.stringify(diffVal.new) : String(diffVal.new ?? 'ندارد');
+
+                                return (
+                                  <div key={key} className="bg-zinc-900/80 border border-zinc-800 p-2 rounded-lg text-right">
+                                    <span className="text-amber-400 font-bold block mb-1 font-sans">{key}:</span>
+                                    <div className="flex items-center gap-1.5 text-[10px]">
+                                      <span className="text-rose-400 line-through truncate max-w-[120px]">{oldVal}</span>
+                                      <span className="text-zinc-500">←</span>
+                                      <span className="text-emerald-400 font-bold truncate max-w-[120px]">{newVal}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* AUDIT LOG RAW DETAILS MODAL */}
+      <AnimatePresence>
+        {selectedAuditLog && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-xl w-full p-5 space-y-4 max-h-[85vh] flex flex-col text-right"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-purple-400" />
+                  <div>
+                    <h3 className="text-xs font-bold text-white">جزئیات کامل رکورد حسابرسی (Audit Log)</h3>
+                    <span className="text-[10px] text-zinc-400 font-mono">شناسه لاگ: {selectedAuditLog.id}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedAuditLog(null)}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-800">
+                    <span className="text-zinc-400 text-[10px] block">نوع عمل:</span>
+                    <strong className="text-white font-mono">{selectedAuditLog.action}</strong>
+                  </div>
+                  <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-800">
+                    <span className="text-zinc-400 text-[10px] block">بخش هدف:</span>
+                    <strong className="text-white font-mono">{selectedAuditLog.targetType}</strong>
+                  </div>
+                  <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-800">
+                    <span className="text-zinc-400 text-[10px] block">اقدام‌کننده:</span>
+                    <strong className="text-amber-400">{selectedAuditLog.actor}</strong>
+                  </div>
+                  <div className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-800">
+                    <span className="text-zinc-400 text-[10px] block">زمان ثبت:</span>
+                    <strong className="text-zinc-200 font-mono text-[11px]">{new Date(selectedAuditLog.timestamp).toISOString()}</strong>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+                  <span className="text-zinc-400 text-[10px] block mb-1">شرح رویداد:</span>
+                  <p className="text-xs text-zinc-200 leading-relaxed">{selectedAuditLog.details}</p>
+                </div>
+
+                <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400 text-[10px] font-bold">داده‌های خام (JSON Payload):</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(selectedAuditLog, null, 2));
+                        onShowToast('اطلاعات خام با موفقیت کپی شد');
+                      }}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>کپی JSON</span>
+                    </button>
+                  </div>
+                  <pre className="text-[10px] text-zinc-300 font-mono overflow-x-auto p-2 bg-zinc-900 rounded-lg max-h-48" dir="ltr">
+                    {JSON.stringify(selectedAuditLog, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setSelectedAuditLog(null)}
+                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2 rounded-xl text-xs font-bold transition-colors"
+                >
+                  بستن پنجره
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ADD / EDIT EYEWEAR PRODUCT MODAL */}
       <AnimatePresence>

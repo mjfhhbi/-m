@@ -18,6 +18,10 @@ service cloud.firestore {
     match /analytics/{docId} {
       allow read, write: if true;
     }
+    // Audit Logs: readable and writable for logging mutations
+    match /audit_logs/{logId} {
+      allow read, write: if true;
+    }
     match /{document=**} {
       allow read, write: if true;
     }

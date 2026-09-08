@@ -195,3 +195,19 @@ export interface VisitorStats {
   recentVisits: VisitLog[];
   dailyStats: DailyStat[];
 }
+
+export type AuditLogAction = 'create' | 'update' | 'delete' | 'stock_change' | 'status_change';
+export type AuditLogTarget = 'product' | 'order' | 'settings' | 'system';
+
+export interface AuditLogEntry {
+  id: string;
+  targetType: AuditLogTarget;
+  targetId: string;
+  action: AuditLogAction;
+  actor: string;
+  actorIp?: string;
+  summary: string;
+  details?: Record<string, any>;
+  timestamp: string;
+}
+
