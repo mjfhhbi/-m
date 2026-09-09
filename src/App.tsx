@@ -114,7 +114,12 @@ export default function App() {
   });
 
   // Admin Security Auth State
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('admin_session_auth') === 'true';
+    }
+    return false;
+  });
   const [isPasscodeModalOpen, setIsPasscodeModalOpen] = useState<boolean>(false);
   const [passcodeInput, setPasscodeInput] = useState<string>('');
   const [passcodeError, setPasscodeError] = useState<string>('');
@@ -208,8 +213,13 @@ export default function App() {
     const viewParam = params.get('view');
     const isPathAdmin = window.location.pathname.toLowerCase().includes('/admin');
     if (viewParam === 'admin' || isPathAdmin) {
-      // Require passcode verification for admin access
-      setIsPasscodeModalOpen(true);
+      const isAlreadyAuthed = sessionStorage.getItem('admin_session_auth') === 'true';
+      if (isAlreadyAuthed) {
+        setIsAdminAuthenticated(true);
+        setCurrentView('admin');
+      } else {
+        setIsPasscodeModalOpen(true);
+      }
     } else {
       setCurrentView('store');
     }
@@ -310,6 +320,7 @@ export default function App() {
     const entered = passcodeInput.trim();
     const targetPasscode = settings.adminPasscode || '1383';
     if (entered === targetPasscode) {
+      sessionStorage.setItem('admin_session_auth', 'true');
       setIsAdminAuthenticated(true);
       setIsPasscodeModalOpen(false);
       setCurrentView('admin');
@@ -323,6 +334,7 @@ export default function App() {
   };
 
   const handleAdminLogout = () => {
+    sessionStorage.removeItem('admin_session_auth');
     setIsAdminAuthenticated(false);
     setCurrentView('store');
     showToast('از پنل مدیریت خارج شدید');

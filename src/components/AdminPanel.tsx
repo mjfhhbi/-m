@@ -62,6 +62,7 @@ import {
   Bell,
   Volume2,
   AlertTriangle,
+  AlertCircle,
   Users,
   Activity,
   Smartphone,
@@ -183,22 +184,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleClearAuditLogs = async () => {
-    if (!window.confirm('آیا از پاکسازی تاریخچه لاگ‌های حسابرسی مطمئن هستید؟')) return;
-    setIsClearingLogs(true);
-    try {
-      const ok = await clearAuditLogsRemote();
-      if (ok) {
-        setAuditLogs([]);
-        onShowToast('تاریخچه لاگ‌های حسابرسی پاکسازی شد');
-      } else {
-        onShowToast('خطا در پاکسازی لاگ‌ها');
+  const handleClearAuditLogs = () => {
+    setConfirmModal({
+      title: 'پاکسازی تاریخچه لاگ‌ها',
+      description: 'آیا از پاکسازی تمام رکوردهای لاگ حسابرسی مطمئن هستید؟ این عملیات غیرقابل بازگشت است.',
+      confirmText: 'بله، پاکسازی شود',
+      isDangerous: true,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setIsClearingLogs(true);
+        try {
+          const ok = await clearAuditLogsRemote();
+          if (ok) {
+            setAuditLogs([]);
+            onShowToast('تاریخچه لاگ‌های حسابرسی پاکسازی شد');
+          } else {
+            onShowToast('خطا در پاکسازی لاگ‌ها');
+          }
+        } catch (e) {
+          onShowToast('خطا در پاکسازی لاگ‌ها');
+        } finally {
+          setIsClearingLogs(false);
+        }
       }
-    } catch (e) {
-      onShowToast('خطا در پاکسازی لاگ‌ها');
-    } finally {
-      setIsClearingLogs(false);
-    }
+    });
   };
 
   const loadVisitorStats = async () => {
@@ -360,6 +369,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isTestingNtfy, setIsTestingNtfy] = useState(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    description: string;
+    confirmText?: string;
+    isDangerous?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
 
   React.useEffect(() => {
     setTempSettings(settings);
@@ -1042,9 +1058,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </button>
                       <button
                         onClick={() => {
-                          if (window.confirm('آیا از حذف این عینک مطمئن هستید؟')) {
-                            onDeleteProduct(prod.id);
-                          }
+                          setConfirmModal({
+                            title: 'حذف عینک از ویترین',
+                            description: `آیا از حذف عینک «${prod.title}» مطمئن هستید؟ این محصول از ویترین حذف خواهد شد.`,
+                            confirmText: 'بله، حذف شود',
+                            isDangerous: true,
+                            onConfirm: () => {
+                              setConfirmModal(null);
+                              onDeleteProduct(prod.id);
+                            }
+                          });
                         }}
                         className="bg-zinc-800 hover:bg-zinc-700 text-rose-400 p-1.5 rounded-lg transition-colors"
                         title="حذف عینک"
@@ -1296,9 +1319,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm(`آیا از حذف سفارش ${orderCodeStr} مربوط به ${custName} اطمینان دارید؟`)) {
-                                onDeleteOrder(ord.id);
-                              }
+                              setConfirmModal({
+                                title: 'حذف سفارش خریدار',
+                                description: `آیا از حذف سفارش ${orderCodeStr} مربوط به «${custName}» اطمینان دارید؟`,
+                                confirmText: 'بله، حذف سفارش',
+                                isDangerous: true,
+                                onConfirm: () => {
+                                  setConfirmModal(null);
+                                  onDeleteOrder(ord.id);
+                                }
+                              });
                             }}
                             className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors"
                             title="حذف کامل این سفارش از لیست"
@@ -4330,6 +4360,51 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>{isResetting ? 'در حال پاکسازی...' : 'بله، همه را کاملاً پاک کن'}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* In-App Confirmation Modal */}
+      <AnimatePresence>
+        {confirmModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl text-right"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${confirmModal.isDangerous ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400' : 'bg-amber-500/10 border border-amber-500/30 text-amber-400'}`}>
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">{confirmModal.title}</h3>
+                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{confirmModal.description}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-zinc-800/80">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmModal.onConfirm}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg active:scale-95 ${
+                    confirmModal.isDangerous
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                      : 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
+                  }`}
+                >
+                  {confirmModal.confirmText || 'تایید'}
                 </button>
               </div>
             </motion.div>

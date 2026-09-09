@@ -180,20 +180,49 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       return;
     }
 
+    // Normalize Persian/Arabic digits
+    const cleanPhone = customer.phone
+      .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+      .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace(/\D/g, '')
+      .trim();
+
+    const cleanPostal = customer.postalCode
+      .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+      .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace(/\D/g, '')
+      .trim();
+
     if (
       !customer.fullName.trim() || 
-      !customer.phone.trim() || 
+      !cleanPhone || 
       !customer.address.trim() || 
-      !customer.postalCode.trim()
+      !cleanPostal
     ) {
       setErrorMessage('لطفاً نام، شماره تماس، آدرس دقیق و کد پستی ۱۰ رقمی را وارد کنید.');
       return;
     }
 
-    if (customer.postalCode.trim().length < 5) {
-      setErrorMessage('کد پستی وارد شده معتبر نیست. لطفاً کد پستی ۱۰ رقمی را وارد نمایید.');
+    if (
+      cleanPhone.length < 10 || 
+      cleanPhone.length > 11 || 
+      (!cleanPhone.startsWith('09') && !cleanPhone.startsWith('9'))
+    ) {
+      setErrorMessage('لطفاً یک شماره موبایل معتبر ایران (مثال: ۰۹۱۲۳۴۵۶۷۸۹) وارد فرمایید.');
       return;
     }
+
+    if (cleanPostal.length < 10) {
+      setErrorMessage('کد پستی وارد شده معتبر نیست. لطفاً کد پستی ۱۰ رقمی پستی را کامل وارد نمایید.');
+      return;
+    }
+
+    const formattedPhone = cleanPhone.startsWith('9') && cleanPhone.length === 10 ? '0' + cleanPhone : cleanPhone;
+    const normalizedCustomer: OrderCustomer = {
+      ...customer,
+      phone: formattedPhone,
+      postalCode: cleanPostal,
+    };
 
     if (paymentMethod === 'card_to_card' && !receiptImage) {
       setErrorMessage('لطفاً ابتدا تصویر فیش یا رسید واریزی کارت به کارت را آپلود کنید تا ثبت سفارش مجاز شود.');
@@ -252,7 +281,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       discountAmount: discountAmount > 0 ? discountAmount : undefined,
       appliedCoupon: appliedCouponCode || undefined,
       finalAmount,
-      customer,
+      customer: normalizedCustomer,
       paymentMethod,
       paymentReceipt: isOnline ? undefined : receiptImage,
       isPaid: isOnline,

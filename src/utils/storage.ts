@@ -160,8 +160,172 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   ntfyServerUrl: 'https://ntfy.sh',
 };
 
-// Ready sample products if user requests demo items
-export const DEMO_PRODUCTS: Product[] = [];
+// Ready sample products if user requests demo items or initial launch
+export const DEMO_PRODUCTS: Product[] = [
+  {
+    id: 'stk-rb3025-aviator',
+    title: 'عینک آفتابی خلبانی ری‌بن Aviator طلایی استوک اورجینال',
+    code: 'STK-RB3025',
+    category: 'sunglasses',
+    price: 1850000,
+    originalPrice: 2400000,
+    frameType: 'فلزی آبکاری طلا ۲۴ عیار',
+    lensColor: 'دودی سبز G-15 ضد انعکاس',
+    uvProtection: 'استاندارد UV400 پولاریزه',
+    gender: 'اسپرت (یونی‌سکس)',
+    images: [
+      'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'عینک خلبانی نمادین ری‌بن استوک وارداتی سفارش اروپا. فریم طلایی مقاوم با دسته‌های ارگونومیک، عدسی شیشه‌ای G-15 با فیلتر کامل اشعه فرابنفش، مناسب رانندگی و استفاده روزمره.',
+    features: ['عدسی شیشه‌ای ضدخش کریستال', 'فیلتر کامل UV400 و پولاریزه', 'پدهای بینی سیلیکونی نرم ضد حساسیت', 'جعبه و دستمال نانو اورجینال'],
+    stock: 4,
+    isFeatured: true,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'stk-rb2140-wayfarer',
+    title: 'عینک ویفرر کلاسیک مشکی مات Wayfarer ایتالیا',
+    code: 'STK-RB2140',
+    category: 'sunglasses',
+    price: 1680000,
+    originalPrice: 2100000,
+    frameType: 'کائوچو استات دست‌ساز ایتالیا',
+    lensColor: 'مشکی دودی گرادینت UV400',
+    uvProtection: 'استاندارد UV400 محافظ کامل',
+    gender: 'اسپرت (یونی‌سکس)',
+    images: [
+      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'مدل افسانه‌ای ویفرر با بدنه استات مشکی مات فوق‌العاده باکیفیت. لولاهای ۷ پین فلزی ضد شکستگی و عدسی‌های فیلترکننده نورهای مزاحم محیطی.',
+    features: ['بدنه کائوچویی فوق‌العاده مقاوم', 'لولاهای فولادی ضدزنگ ۷ خار', 'طراحی رترو و وینتیج ماندگار', 'مناسب تمام فرم‌های صورت'],
+    stock: 5,
+    isFeatured: true,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'stk-rb3016-clubmaster',
+    title: 'عینک کلاب‌مستر کلاسیک Clubmaster مشکی و طلایی',
+    code: 'STK-RB3016',
+    category: 'sunglasses',
+    price: 1920000,
+    originalPrice: 2500000,
+    frameType: 'ترکیب استات استوک و آلیاژ برنجی',
+    lensColor: 'قهوه‌ای هایلایت UV400',
+    uvProtection: 'UV400 + Polarized',
+    gender: 'مردانه',
+    images: [
+      'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'طراحی نیم‌فریم ابرویی بی‌نظیر کلاب‌مستر با جزییات طلایی چشم‌نواز. انتخابی اصیل برای استایل‌های کلاسیک و رسمی مردانه.',
+    features: ['فریم نیمه نیم‌کائوچویی با زهوار طلایی', 'عدسی محافظت کامل در برابر بازتاب نور', 'حک لیزری برند روی عدسی', 'قاب چرمی محافظ'],
+    stock: 3,
+    isFeatured: true,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'opt-vintage-round-501',
+    title: 'فریم طبی گرد وینتیج Vintage Round ترند روز',
+    code: 'OPT-VR501',
+    category: 'optical',
+    price: 1290000,
+    originalPrice: 1600000,
+    frameType: 'تیتانیوم سبک ضد حساسیت',
+    lensColor: 'بلوکات آنتی رفلکس (شفاف)',
+    uvProtection: 'محافظ نور آبی مانیتور (Blue Control)',
+    gender: 'اسپرت (یونی‌سکس)',
+    images: [
+      'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'فریم طبی بسیار سبک و خوش‌ساخت برای استفاده پشت سیستم و مطالعه طولانی. قابلیت تعویض عدسی با نمره چشم شما در هر بینایی‌سنجی.',
+    features: ['وزن بسیار کم کمتر از ۱۶ گرم', 'جلوگیری از خستگی چشم پشت کامپیوتر', 'آلیاژ تیتانیوم انعطاف‌پذیر', 'قابلیت نصب تمام نمرات طبی'],
+    stock: 6,
+    isFeatured: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'stk-cartier-panthere',
+    title: 'عینک آفتابی لوکس کارتیه مدل پانتر نگین‌دار استوک',
+    code: 'STK-CT908',
+    category: 'luxury',
+    price: 2450000,
+    originalPrice: 3200000,
+    frameType: 'تمام فلزی آبکاری رودیوم نگین‌دار',
+    lensColor: 'شیب‌رنگ بنفش دودی الماسه',
+    uvProtection: 'استاندارد UV400 کامل',
+    gender: 'زنانه',
+    images: [
+      'https://images.unsplash.com/photo-1577803645773-f96470509666?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'عینک بدون فریم لوکس کارتیه با دسته‌های تراش‌خورده و ظرافت شاهکار. مناسب مهمانی‌ها، مجالس و استایل‌های خاص زنانه.',
+    features: ['عدسی‌های تراش‌خورده الماسه چندضلعی', 'بدنه لوکس بدون تغییر رنگ', 'حک شماره سریال کارتیه روی بازو', 'جعبه هاردکیس مخملی کارتیه'],
+    stock: 2,
+    isFeatured: true,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'opt-tomford-acetate',
+    title: 'فریم طبی مستطیلی کائوچویی تام فورد Tom Ford',
+    code: 'OPT-TF540',
+    category: 'optical',
+    price: 1750000,
+    originalPrice: 2200000,
+    frameType: 'استات کائوچویی چندلایه مات',
+    lensColor: 'عدسی دموی شفاف قابل تعویض',
+    uvProtection: 'UV400 بلوکات',
+    gender: 'مردانه',
+    images: [
+      'https://images.unsplash.com/photo-1577803645773-f96470509666?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'فریم طبی مستطیلی با نشان فلزی معروف T شکل تام فورد روی لولاها. طراحی شیک و باوقار، مناسب استایل مدیران و محیط‌های اداری.',
+    features: ['طراحی انحصاری T Logo تام فورد', 'پوشش مات ضد لک و ضد تعریق', 'مناسب برای نمرات ضعیف و آستیگمات', 'استقامت بسیار بالای بدنه'],
+    stock: 3,
+    isFeatured: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'spt-oakley-sportshield',
+    title: 'عینک ورزشی و دوچرخه‌سواری ضد ضربه اوکلی',
+    code: 'SPT-OK800',
+    category: 'sport',
+    price: 1420000,
+    originalPrice: 1800000,
+    frameType: 'پلیمر فشرده TR90 نشکن و منعطف',
+    lensColor: 'جیوه‌ای هفت‌رنگ ضد بخار',
+    uvProtection: 'UV400 + Polarized ورزش حرفه‌ای',
+    gender: 'اسپرت (یونی‌سکس)',
+    images: [
+      'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'عینک مخصوص دویدن، کوهنوردی، دوچرخه‌سواری و اسکی با پوشش پانورامای کامل چشم. دارای منافذ هدایت باد جهت جلوگیری از بخار گرفتگی عدسی.',
+    features: ['مقاومت بالا در برابر ضربه و سقوط', 'دید سراسری و بدون مانع میدان دید', 'روکش آب‌گریز نانو روی عدسی', 'بند مهار ورزشی ضمیمه'],
+    stock: 4,
+    isFeatured: true,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'stk-chanel-cateye',
+    title: 'عینک آفتابی زنانه گربه‌ای استوک شنل Chanel',
+    code: 'STK-CH302',
+    category: 'sunglasses',
+    price: 2150000,
+    originalPrice: 2800000,
+    frameType: 'کائوچویی براق مشکی پیانو',
+    lensColor: 'دودی سایه‌روشن UV400',
+    uvProtection: 'استاندارد UV400 محافظ کامل چشم',
+    gender: 'زنانه',
+    images: [
+      'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=800&auto=format&fit=crop&q=80'
+    ],
+    description: 'فریم چشم‌گربه‌ای زنانه برند شنل با لوگوی نقره‌ای CC برجسته روی دسته‌ها. طراحی خیره‌کننده که فرم صورت را کشیده و جذاب‌تر نشان می‌دهد.',
+    features: ['فریم صیقلی پیانویی بدون خط و خش', 'عدسی محافظ در برابر اشعه‌های UVA و UVB', 'ارگونومی استاندارد زنانه', 'دستمال ابریشمی و جلد اختصاصی'],
+    stock: 3,
+    isFeatured: true,
+    createdAt: new Date().toISOString()
+  }
+];
 
 // Curated high quality glasses preset images for quick selection
 export const GLASSES_IMAGE_PRESETS = [
@@ -288,15 +452,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number = 2500): Promise<T> {
 export function getStoredProducts(): Product[] {
   try {
     const data = localStorage.getItem(PRODUCTS_KEY);
-    if (data === null) return [];
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((p) => p && p.id);
+    if (data === null) {
+      // Seed with initial authentic stock catalog
+      localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEMO_PRODUCTS));
+      return DEMO_PRODUCTS;
     }
-    return [];
+    const parsed = JSON.parse(data);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const valid = parsed.filter((p) => p && p.id);
+      if (valid.length > 0) return valid;
+    }
+    // If empty array, fallback to DEMO_PRODUCTS
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEMO_PRODUCTS));
+    return DEMO_PRODUCTS;
   } catch (err) {
     console.error('Error reading products:', err);
-    return [];
+    return DEMO_PRODUCTS;
   }
 }
 

@@ -171,14 +171,25 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         -
                       </motion.button>
                       <span className="w-5 text-center text-xs font-bold text-white">{item.quantity}</span>
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.85 }}
-                        onClick={() => onUpdateQuantity(item.product.id, 1)}
-                        className="w-6 h-6 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center text-xs font-bold transition-colors"
-                      >
-                        +
-                      </motion.button>
+                      {(() => {
+                        const isMax = item.quantity >= item.product.stock;
+                        return (
+                          <motion.button
+                            whileHover={isMax ? {} : { scale: 1.1 }}
+                            whileTap={isMax ? {} : { scale: 0.85 }}
+                            disabled={isMax}
+                            onClick={() => onUpdateQuantity(item.product.id, 1)}
+                            className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors ${
+                              isMax
+                                ? 'bg-zinc-900 text-zinc-600 cursor-not-allowed'
+                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                            }`}
+                            title={isMax ? 'حداکثر موجودی عینک در انبار' : 'افزایش تعداد'}
+                          >
+                            +
+                          </motion.button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
