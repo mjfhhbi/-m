@@ -1,5 +1,5 @@
 import React from 'react';
-import { Glasses, Sparkles, ShieldCheck, Truck, Headphones, Award, Sun, CheckCircle2, Smile, ArrowLeft } from 'lucide-react';
+import { Glasses, Sparkles, ShieldCheck, Truck, Headphones, Award, Sun, CheckCircle2, Smile, ArrowLeft, Eye } from 'lucide-react';
 import { motion } from 'motion/react';
 import { StoreSettings } from '../types';
 import { sound } from '../utils/audio';
@@ -7,11 +7,13 @@ import { sound } from '../utils/audio';
 interface StoreHeroProps {
   settings?: StoreSettings;
   onOpenFaceGuide?: () => void;
+  onOpenLensSimulator?: () => void;
 }
 
 export const StoreHero: React.FC<StoreHeroProps> = ({ 
   settings,
-  onOpenFaceGuide
+  onOpenFaceGuide,
+  onOpenLensSimulator
 }) => {
   const badgeText = settings?.heroBadgeText || '✨ کالکشن جدید ۲۰۲۶ - کیفیت اورجینال اروپایی';
   const headline = settings?.heroTitle || settings?.welcomeText || 'تجربه‌ای متفاوت از کیفیت و استایل با عینک استوک جهانی';
@@ -89,6 +91,19 @@ export const StoreHero: React.FC<StoreHeroProps> = ({
               <Smile className="w-4 h-4 text-zinc-950" />
               <span>راهنمای انتخاب عینک مناسب فرم صورت</span>
               <ArrowLeft className="w-4 h-4 mr-1" />
+            </button>
+          )}
+
+          {onOpenLensSimulator && (
+            <button
+              onClick={() => {
+                sound.playPop();
+                onOpenLensSimulator();
+              }}
+              className="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-amber-400 border border-zinc-800 font-bold text-xs sm:text-sm px-5 py-3 rounded-2xl flex items-center gap-2 shadow-md transition-all active:scale-95"
+            >
+              <Eye className="w-4 h-4 text-amber-400" />
+              <span>شبیه‌ساز تست عدسی و فیلتر UV</span>
             </button>
           )}
         </div>

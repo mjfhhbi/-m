@@ -261,7 +261,15 @@ const INITIAL_SERVER_PRODUCTS = [
   }
 ];
 
-let inMemoryStore: { products: any[]; orders: any[]; settings: any; analytics?: any; auditLogs?: any[]; dataVersion?: number } | null = null;
+let inMemoryStore: { 
+  products: any[]; 
+  orders: any[]; 
+  settings: any; 
+  analytics?: any; 
+  auditLogs?: any[]; 
+  deletedProductIds?: string[];
+  dataVersion?: number; 
+} | null = null;
 const liveSessions = new Map<string, { lastSeen: number; page: string; device: string; ip?: string }>();
 const todayVisitorSet = new Set<string>();
 
@@ -388,22 +396,23 @@ function readData() {
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, "utf-8");
       const parsed = JSON.parse(content);
-      const prods = Array.isArray(parsed.products) && parsed.products.length > 0 
+      const prods = Array.isArray(parsed.products)
         ? parsed.products 
-        : INITIAL_SERVER_PRODUCTS;
+        : [];
       inMemoryStore = {
         products: prods,
         orders: Array.isArray(parsed.orders) ? parsed.orders : [],
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
         analytics: { ...DEFAULT_ANALYTICS, ...(parsed.analytics || {}) },
         auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
+        deletedProductIds: Array.isArray(parsed.deletedProductIds) ? parsed.deletedProductIds : [],
       };
       return inMemoryStore;
     }
   } catch (err) {
     console.error("Error reading store file:", err);
   }
-  inMemoryStore = { products: INITIAL_SERVER_PRODUCTS, orders: [], settings: DEFAULT_SETTINGS, analytics: DEFAULT_ANALYTICS, auditLogs: [] };
+  inMemoryStore = { products: [], orders: [], settings: DEFAULT_SETTINGS, analytics: DEFAULT_ANALYTICS, auditLogs: [], deletedProductIds: [] };
   return inMemoryStore;
 }
 
@@ -663,8 +672,9 @@ app.post("/api/products", (req, res) => {
     return res.status(400).json({ error: "Invalid products" });
   }
   const current = readData();
-  const validIncoming = products.filter((p: any) => p && p.id);
-  current.products = mergeProductsLists(current.products || [], validIncoming);
+  const delSet = new Set(current.deletedProductIds || []);
+  const validIncoming = products.filter((p: any) => p && p.id && !delSet.has(p.id));
+  current.products = mergeProductsLists(current.products || [], validIncoming).filter((p: any) => !delSet.has(p.id));
   writeData(current);
   res.json({ success: true, count: current.products.length });
 });
@@ -675,16 +685,21 @@ app.post("/api/products/save", (req, res) => {
     return res.status(400).json({ error: "Invalid product payload" });
   }
   const current = readData();
+  if (Array.isArray(current.deletedProductIds)) {
+    current.deletedProductIds = current.deletedProductIds.filter((id: string) => id !== product.id);
+  }
   const prods = Array.isArray(current.products) ? current.products : [];
   const idx = prods.findIndex((p: any) => p.id === product.id);
+  const cleanP = { ...product, updatedAt: new Date().toISOString() };
   if (idx >= 0) {
-    prods[idx] = { ...prods[idx], ...product, updatedAt: new Date().toISOString() };
+    prods[idx] = cleanP;
   } else {
-    prods.unshift({ ...product, updatedAt: new Date().toISOString() });
+    prods.unshift(cleanP);
   }
   current.products = prods;
   writeData(current);
-  res.json({ success: true, product, total: prods.length });
+  writeFirestoreDoc('products', product.id, cleanP).catch(() => {});
+  res.json({ success: true, product: cleanP, total: prods.length });
 });
 
 app.post("/api/orders", (req, res) => {
@@ -716,6 +731,20 @@ app.post("/api/orders/new", (req, res) => {
   current.orders = Array.from(existingMap.values()).sort((a: any, b: any) =>
     new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );
+
+  // Deduct product stock on server
+  if (Array.isArray(order.items) && Array.isArray(current.products)) {
+    order.items.forEach((item: any) => {
+      const pId = item?.product?.id;
+      const qty = Number(item?.quantity) || 1;
+      const prod = current.products.find((p: any) => p.id === pId);
+      if (prod && typeof prod.stock === "number") {
+        prod.stock = Math.max(0, prod.stock - qty);
+        prod.updatedAt = new Date().toISOString();
+      }
+    });
+  }
+
   writeData(current);
 
   // Dispatch notifications asynchronously to both Telegram and ntfy
@@ -749,19 +778,48 @@ app.post("/api/reset-all", (req, res) => {
   res.json({ success: true, message: "تمامی محصولات و سفارشات با موفقیت پاکسازی شدند." });
 });
 
+app.post("/api/load-demo-products", (req, res) => {
+  const current = readData();
+  const demoIds = INITIAL_SERVER_PRODUCTS.map((p: any) => p.id);
+  if (Array.isArray(current.deletedProductIds)) {
+    current.deletedProductIds = current.deletedProductIds.filter((id: string) => !demoIds.includes(id));
+  }
+  current.products = [...INITIAL_SERVER_PRODUCTS];
+  writeData(current);
+  res.json({ success: true, message: "محصولات نمونه بارگذاری شدند.", count: current.products.length, products: current.products });
+});
+
+app.post("/api/clear-all-products", (req, res) => {
+  const current = readData();
+  const deletedIds = (current.products || []).map((p: any) => p.id);
+  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
+  deletedIds.forEach((id: string) => {
+    if (id && !current.deletedProductIds.includes(id)) current.deletedProductIds.push(id);
+  });
+  current.products = [];
+  writeData(current);
+  res.json({ success: true, message: "تمامی عینک‌ها پاکسازی شدند تا محصولات خودتان را اضافه کنید.", count: 0, products: [] });
+});
+
 app.delete("/api/products/:id", (req, res) => {
   const productId = req.params.id;
   const current = readData();
+  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
+  if (productId && !current.deletedProductIds.includes(productId)) current.deletedProductIds.push(productId);
   current.products = (current.products || []).filter((p: any) => p.id !== productId);
   writeData(current);
+  deleteFirestoreDoc('products', productId).catch(() => {});
   res.json({ success: true, count: current.products.length });
 });
 
 app.post("/api/products/delete", (req, res) => {
   const { productId } = req.body;
   const current = readData();
+  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
+  if (productId && !current.deletedProductIds.includes(productId)) current.deletedProductIds.push(productId);
   current.products = (current.products || []).filter((p: any) => p.id !== productId);
   writeData(current);
+  deleteFirestoreDoc('products', productId).catch(() => {});
   res.json({ success: true, count: current.products.length });
 });
 
@@ -1306,6 +1364,8 @@ app.post("/api/functions/mutate-product", async (req, res) => {
       const title = targetProd?.title || targetId;
 
       current.products = prods.filter((p: any) => p.id !== targetId);
+      if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
+      if (targetId && !current.deletedProductIds.includes(targetId)) current.deletedProductIds.push(targetId);
       writeData(current);
 
       deleteFirestoreDoc('products', targetId).catch(() => {});
@@ -1393,6 +1453,10 @@ app.post("/api/functions/mutate-product", async (req, res) => {
         updatedAt: new Date().toISOString(),
       };
       prods[idx] = cleanProduct;
+    }
+
+    if (Array.isArray(current.deletedProductIds)) {
+      current.deletedProductIds = current.deletedProductIds.filter((id: string) => id !== targetId);
     }
 
     current.products = prods;
@@ -1883,17 +1947,26 @@ app.post("/api/settings", (req, res) => {
 });
 
 app.post("/api/sync-all", (req, res) => {
-  const { products, orders, settings } = req.body;
+  const { products, orders, settings, deletedProductIds } = req.body;
   const current = readData();
 
-  if (Array.isArray(products)) {
-    current.products = products.filter((p: any) => p && p.id);
+  if (Array.isArray(deletedProductIds)) {
+    if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
+    deletedProductIds.forEach((id: string) => {
+      if (id && !current.deletedProductIds.includes(id)) current.deletedProductIds.push(id);
+    });
   }
 
-  if (Array.isArray(orders)) {
-    current.orders = orders.filter((o: any) => o && o.id).sort((a: any, b: any) => 
-      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-    );
+  const delSet = new Set(current.deletedProductIds || []);
+
+  if (Array.isArray(products) && products.length > 0) {
+    const validIncoming = products.filter((p: any) => p && p.id && !delSet.has(p.id));
+    current.products = mergeProductsLists(current.products || [], validIncoming).filter((p: any) => !delSet.has(p.id));
+  }
+
+  if (Array.isArray(orders) && orders.length > 0) {
+    const validIncoming = orders.filter((o: any) => o && o.id);
+    current.orders = mergeOrdersLists(current.orders || [], validIncoming);
   }
 
   if (settings && typeof settings === "object") {

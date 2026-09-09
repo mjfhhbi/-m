@@ -30,7 +30,9 @@ import {
   fetchVisitorStats,
   toPersianDigits,
   getWishlistIds,
-  toggleWishlistId
+  toggleWishlistId,
+  clearAllProductsRemote,
+  loadDemoProductsRemote
 } from './utils/storage';
 
 import { Header } from './components/Header';
@@ -55,6 +57,7 @@ import { Toast } from './components/Toast';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { FilterBar, FilterState } from './components/FilterBar';
 import { sound } from './utils/audio';
+import { IncomingOrderModal } from './components/IncomingOrderModal';
 
 import { Glasses, Plus, ShieldCheck, Sparkles, RefreshCw, ShoppingBag, Instagram, Phone, Send, Lock, X, KeyRound, Headphones, MessageSquare, ArrowRightLeft, Users, Eye, Activity, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -102,6 +105,7 @@ export default function App() {
   const [isTrackerModalOpen, setIsTrackerModalOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
+  const [incomingOrderAlert, setIncomingOrderAlert] = useState<Order | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showIntroSplash, setShowIntroSplash] = useState<boolean>(() => {
     // Show on initial session load
@@ -197,14 +201,31 @@ export default function App() {
       if (Array.isArray(orders)) setOrders(orders);
       if (settings) setSettings(settings);
 
-      // Trigger instant Toast notification ONLY for logged-in admin in admin panel view
+      // Trigger instant Alert & Sound notification for incoming orders
       if (Array.isArray(newOrders) && newOrders.length > 0) {
-        if (isAdminAuthenticatedRef.current && currentViewRef.current === 'admin') {
-          const latest = newOrders[0];
-          const customerName = latest.customer?.fullName || 'مشتری';
-          const code = latest.orderCode || latest.id.slice(-6);
-          showToast(`🔔 سفارش جدید ثبت شد! کد سفارش: ${code} - مشتری: ${customerName}`);
-        }
+        const latest = newOrders[0];
+        const customerName = latest.customer?.fullName || 'مشتری';
+        const code = latest.orderCode || latest.id.slice(-6);
+        const amount = latest.finalAmount || latest.totalAmount || 0;
+
+        // 1. Play unmistakable loud alarm ringtone
+        sound.playOrderAlert();
+
+        // 2. Trigger native OS / browser notification
+        try {
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification(`🔔 سفارش جدید در عینک جهانی!`, {
+              body: `خریدار: ${customerName} | کد: #${code} | مبلغ: ${amount.toLocaleString('fa-IR')} تومان`,
+              icon: '/favicon.ico'
+            });
+          }
+        } catch (e) {}
+
+        // 3. Display Toast banner
+        showToast(`🔔 سفارش جدید ثبت شد! کد سفارش: ${code} - مشتری: ${customerName}`);
+
+        // 4. Open high-priority incoming order modal
+        setIncomingOrderAlert(latest);
       }
     });
 
@@ -309,6 +330,15 @@ export default function App() {
       return;
     }
 
+    // Safety check: ensure products in state if available in storage
+    setProducts((prev) => {
+      if (prev.length === 0) {
+        const stored = getStoredProducts();
+        if (stored.length > 0) return stored;
+      }
+      return prev;
+    });
+
     setCurrentView(view);
     const url = new URL(window.location.href);
     url.searchParams.set('view', view);
@@ -323,6 +353,13 @@ export default function App() {
       sessionStorage.setItem('admin_session_auth', 'true');
       setIsAdminAuthenticated(true);
       setIsPasscodeModalOpen(false);
+      setProducts((prev) => {
+        if (prev.length === 0) {
+          const stored = getStoredProducts();
+          if (stored.length > 0) return stored;
+        }
+        return prev;
+      });
       setCurrentView('admin');
       showToast('با موفقیت وارد پنل مدیریت شدید');
       const url = new URL(window.location.href);
@@ -336,6 +373,13 @@ export default function App() {
   const handleAdminLogout = () => {
     sessionStorage.removeItem('admin_session_auth');
     setIsAdminAuthenticated(false);
+    setProducts((prev) => {
+      if (prev.length === 0) {
+        const stored = getStoredProducts();
+        if (stored.length > 0) return stored;
+      }
+      return prev;
+    });
     setCurrentView('store');
     showToast('از پنل مدیریت خارج شدید');
     const url = new URL(window.location.href);
@@ -458,10 +502,16 @@ export default function App() {
     showToast('عینک با موفقیت از سیستم حذف شد');
   };
 
-  const handleLoadDemoProducts = () => {
-    setProducts(DEMO_PRODUCTS);
-    saveStoredProducts(DEMO_PRODUCTS);
+  const handleLoadDemoProducts = async () => {
+    const demos = await loadDemoProductsRemote();
+    setProducts(demos);
     showToast('عینک‌های نمونه با موفقیت بارگذاری شدند');
+  };
+
+  const handleClearAllProducts = async () => {
+    setProducts([]);
+    await clearAllProductsRemote();
+    showToast('تمامی عینک‌های فرضی با موفقیت پاک شدند. اکنون می‌توانید عینک‌های واقعی خود را ثبت کنید.');
   };
 
   // Order Actions & Automatic Stock Management
@@ -489,6 +539,20 @@ export default function App() {
 
     // 3. Clear cart after order creation
     setCartItems([]);
+
+    // 4. Play alert sound & show alert modal immediately
+    sound.playOrderAlert();
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        const customerName = newOrder.customer?.fullName || 'مشتری';
+        const code = newOrder.orderCode || newOrder.id.slice(-6);
+        new Notification(`🔔 سفارش جدید ثبت شد! #${code}`, {
+          body: `خریدار: ${customerName} | مبلغ: ${(newOrder.finalAmount || newOrder.totalAmount || 0).toLocaleString('fa-IR')} تومان`,
+          icon: '/favicon.ico',
+        });
+      }
+    } catch (e) {}
+    setIncomingOrderAlert(newOrder);
   };
 
   const handleUpdateOrderStatus = (
@@ -685,6 +749,7 @@ export default function App() {
                 <StoreHero 
                   settings={settings} 
                   onOpenFaceGuide={() => setIsFaceGuideOpen(true)}
+                  onOpenLensSimulator={() => setIsLensSimulatorOpen(true)}
                 />
 
                 {/* Advanced Filtering, Sorting and Search Bar */}
@@ -718,19 +783,31 @@ export default function App() {
                       نمایش {filteredProducts.length} محصول از مجموع {products.length} عینک در فروشگاه {settings.storeName}
                     </p>
                   </div>
-
-                  {/* Quick Admin Access pill */}
-                  <button
-                    onClick={() => handleViewChange('admin')}
-                    className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/20 transition-colors"
-                  >
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>ورود به پنل مدیریت</span>
-                  </button>
                 </div>
 
                 {/* Products Grid / Empty States */}
-                {filteredProducts.length === 0 ? (
+                {products.length === 0 ? (
+                  <div className="bg-zinc-900/40 border-2 border-dashed border-amber-500/30 rounded-3xl p-10 text-center space-y-4 my-8 text-right dir-rtl">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                      <Glasses className="w-8 h-8 stroke-[1.5]" />
+                    </div>
+                    <div className="max-w-md mx-auto space-y-2">
+                      <h3 className="text-base font-bold text-white">ویترین آماده قرارگیری عینک‌های شماست</h3>
+                      <p className="text-xs text-zinc-400 leading-relaxed">
+                        ویترین در حال حاضر خالی است. برای ثبت و انتشار عینک‌های جدید روی دکمه زیر کلیک فرمایید.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                      <button
+                        onClick={() => handleViewChange('admin')}
+                        className="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all shadow-lg shadow-amber-500/20"
+                      >
+                        <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
+                        <span>افزودن اولین محصول به ویترین</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : filteredProducts.length === 0 ? (
                   <div className="bg-zinc-900/40 border-2 border-dashed border-zinc-800 rounded-3xl p-10 text-center space-y-4 my-8 text-right dir-rtl">
                     <div className="w-16 h-16 rounded-2xl bg-zinc-800/80 text-amber-400 flex items-center justify-center mx-auto">
                       <Glasses className="w-8 h-8 stroke-[1.5]" />
@@ -809,6 +886,7 @@ export default function App() {
                 onSaveSettings={handleSaveSettings}
                 onShowToast={showToast}
                 onLoadDemoProducts={handleLoadDemoProducts}
+                onClearAllProducts={handleClearAllProducts}
                 onOpenInvoice={(order) => setSelectedInvoiceOrder(order)}
                 onRefreshData={syncWithServer}
               />
@@ -960,6 +1038,18 @@ export default function App() {
         settings={settings}
       />
 
+      {/* Real-Time Live Order Alert for Store Owner */}
+      <IncomingOrderModal
+        order={incomingOrderAlert}
+        onClose={() => setIncomingOrderAlert(null)}
+        onViewInAdmin={(order) => {
+          setIsAdminAuthenticated(true);
+          sessionStorage.setItem('admin_session_auth', 'true');
+          setCurrentView('admin');
+          setSelectedInvoiceOrder(order);
+        }}
+      />
+
       {/* Admin Passcode Modal */}
       <AnimatePresence>
         {isPasscodeModalOpen && (
@@ -1086,7 +1176,7 @@ export default function App() {
       )}
 
       {/* Footer */}
-      <footer className="bg-zinc-950 border-t border-zinc-800/80 pt-10 pb-24 sm:pb-8 px-4 sm:px-6 mt-16 text-right dir-rtl text-xs text-zinc-400">
+      <footer className="bg-zinc-950 border-t border-zinc-800/80 pt-10 pb-28 sm:pb-24 px-4 sm:px-6 mt-16 text-right dir-rtl text-xs text-zinc-400">
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b border-zinc-800/80 pb-8">
             {/* Col 1: About */}

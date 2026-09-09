@@ -29,8 +29,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   if (currentView === 'admin') return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-40 sm:hidden bg-zinc-950/95 backdrop-blur-lg border-t border-zinc-800/80 px-2 py-1.5 shadow-[0_-10px_25px_rgba(0,0,0,0.5)] dir-rtl select-none">
-      <div className="grid grid-cols-5 items-center justify-around max-w-md mx-auto">
+    <div className="fixed bottom-0 sm:bottom-4 inset-x-0 z-40 flex justify-center px-0 sm:px-4 pointer-events-none dir-rtl select-none">
+      <div className="w-full sm:max-w-md bg-zinc-950/95 sm:bg-zinc-950/90 backdrop-blur-xl border-t sm:border border-zinc-800/90 sm:rounded-2xl px-3 py-1.5 sm:py-2 shadow-[0_-10px_25px_rgba(0,0,0,0.5)] sm:shadow-[0_10px_35px_rgba(0,0,0,0.8)] pointer-events-auto">
+        <div className="grid grid-cols-5 items-center justify-around">
         
         {/* Store / Home */}
         <button
@@ -105,6 +106,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] font-bold mt-0.5 text-zinc-300">پشتیبانی</span>
         </button>
 
+        </div>
       </div>
     </div>
   );

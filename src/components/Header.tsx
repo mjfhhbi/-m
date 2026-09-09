@@ -1,27 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Glasses, 
-  ShoppingBag, 
-  Settings, 
   Store, 
   Search, 
   Sparkles,
   ShieldCheck,
-  Menu,
-  X,
-  Truck,
-  Wifi,
-  WifiOff,
   ArrowRightLeft,
-  Heart,
-  Eye,
-  Smile,
   Volume2,
   VolumeX
 } from 'lucide-react';
 import { CategoryType, StoreSettings } from '../types';
 import { DEFAULT_CATEGORIES } from '../utils/storage';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { sound } from '../utils/audio';
 
 interface HeaderProps {
@@ -69,8 +59,6 @@ export const Header: React.FC<HeaderProps> = ({
   isAdminAuthenticated,
   onAdminLogout,
 }) => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isSoundEnabled, setIsSoundEnabled] = useState(sound.enabled);
 
   const toggleSound = () => {
@@ -84,17 +72,6 @@ export const Header: React.FC<HeaderProps> = ({
       onShowToast('صدا غیرفعال شد 🔇');
     }
   };
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const activeCategories = settings?.categories && settings.categories.length > 0 
     ? settings.categories 
@@ -120,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="truncate">{settings.tagline}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Audio Feedback Toggle Button */}
             <button
               onClick={toggleSound}
@@ -133,46 +110,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {isSoundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
             </button>
-
-            {/* Online / Network Status Indicator */}
-            <div 
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium border transition-all ${
-                isOnline 
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-              }`}
-              title={isOnline ? 'اتصال مستقیم بدون نیاز به فیلترشکن' : 'حالت آفلاین - ذخیره‌سازی محلی سفارشات'}
-            >
-              {isOnline ? (
-                <>
-                  <Wifi className="w-3 h-3 text-emerald-400 animate-pulse shrink-0" />
-                  <span className="hidden xs:inline">پاسخ‌دهی آنی</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span>آفلاین</span>
-                </>
-              )}
-            </div>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onViewChange(currentView === 'store' ? 'admin' : 'store')}
-              className="group flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] transition-colors border border-zinc-700"
-            >
-              {currentView === 'store' ? (
-                <>
-                  <Settings className="w-3 h-3 text-amber-400 group-hover:rotate-90 transition-transform duration-300" />
-                  <span>پنل مدیریت</span>
-                </>
-              ) : (
-                <>
-                  <Store className="w-3 h-3 text-emerald-400 group-hover:scale-110 transition-transform" />
-                  <span>ویترین فروشگاه</span>
-                </>
-              )}
-            </motion.button>
 
             {isAdminAuthenticated && onAdminLogout && (
               <motion.button
@@ -243,72 +180,33 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right Action Icons */}
           <div className="flex items-center gap-1.5 sm:gap-2.5">
-            {/* Customer Order Tracker Button */}
-            {onOpenTrackerModal && (
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={onOpenTrackerModal}
-                className="group flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-zinc-800 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
-                title="پیگیری سفارش و دریافت کد پستی"
-              >
-                <Truck className="w-4 h-4 text-amber-400 shrink-0 group-hover:translate-x-1 transition-transform duration-300" />
-                <span className="hidden lg:inline">پیگیری سفارشات / ورود خریدار</span>
-                <span className="hidden sm:inline lg:hidden text-[11px]">پیگیری</span>
-              </motion.button>
-            )}
-
-            {/* View Switch Pill (Desktop/Tablet) */}
-            <div className="hidden sm:flex bg-zinc-900 p-1 rounded-xl border border-zinc-800/80">
+            {/* View Switch Pill */}
+            <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800/80">
               <button
-                onClick={() => onViewChange('store')}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  currentView === 'store'
-                    ? 'bg-amber-500 text-zinc-950 font-bold shadow-md shadow-amber-500/20'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
+                onClick={() => onViewChange(currentView === 'store' ? 'admin' : 'store')}
+                className="group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200"
               >
-                <Store className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                <span>فروشگاه</span>
-              </button>
-              <button
-                onClick={() => onViewChange('admin')}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  currentView === 'admin'
-                    ? 'bg-amber-500 text-zinc-950 font-bold shadow-md shadow-amber-500/20'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                <span>پنل مدیریت</span>
+                {currentView === 'store' ? (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+                    <span>پنل مدیریت</span>
+                  </>
+                ) : (
+                  <>
+                    <Store className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                    <span>ویترین فروشگاه</span>
+                  </>
+                )}
               </button>
             </div>
 
-            {/* Wishlist Button */}
-            {onOpenWishlist && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={onOpenWishlist}
-                className="relative p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-rose-400 border border-zinc-800 transition-colors"
-                title="عینک‌های نشان‌شده"
-              >
-                <Heart className={`w-4 h-4 ${wishlistCount > 0 ? 'text-rose-500 fill-rose-500' : ''}`} />
-                {wishlistCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
-                    {wishlistCount}
-                  </span>
-                )}
-              </motion.button>
-            )}
-
-            {/* Compare Button */}
+            {/* Compare Button (Only when 2+ glasses selected) */}
             {comparedCount > 0 && onOpenCompareModal && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onOpenCompareModal}
-                className="group relative flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-md"
+                className="group relative flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md"
                 title="مشاهده جدول مقایسه عینک‌ها"
               >
                 <ArrowRightLeft className="w-4 h-4 text-amber-400" />
@@ -318,37 +216,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </motion.button>
             )}
-
-            {/* Shopping Cart Button */}
-            <motion.button
-              whileHover={{ scale: 1.05, y: -1 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={onOpenCart}
-              className="group relative flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-amber-500/15"
-            >
-              <ShoppingBag className="w-4 h-4 stroke-[2.5] group-hover:-rotate-12 group-hover:scale-110 transition-transform duration-300" />
-              <span className="hidden sm:inline">سبد خرید</span>
-              {cartCount > 0 && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: [1, 1.25, 1] }}
-                  transition={{ duration: 0.3 }}
-                  className="bg-zinc-950 text-amber-400 text-[11px] sm:text-xs font-extrabold px-1.5 sm:px-2 py-0.5 rounded-full border border-amber-400/30"
-                >
-                  {cartCount}
-                </motion.span>
-              )}
-            </motion.button>
-
-            {/* Mobile Hamburger Menu Toggle */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="sm:hidden p-2 text-zinc-300 hover:text-white bg-zinc-900 border border-zinc-800 rounded-xl"
-              aria-label="منوی موبایل"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5 text-amber-400" /> : <Menu className="w-5 h-5" />}
-            </motion.button>
           </div>
         </div>
 
@@ -366,138 +233,34 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile Menu Dropdown Drawer */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="sm:hidden mt-3 pt-3 border-t border-zinc-800/80 space-y-2 overflow-hidden"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => { onViewChange('store'); setMobileMenuOpen(false); }}
-                  className={`flex items-center justify-center gap-2 p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    currentView === 'store'
-                      ? 'bg-amber-500 text-zinc-950 border-amber-500'
-                      : 'bg-zinc-900 text-zinc-300 border-zinc-800'
-                  }`}
-                >
-                  <Store className="w-4 h-4" />
-                  <span>ویترین فروشگاه</span>
-                </button>
-
-                <button
-                  onClick={() => { onViewChange('admin'); setMobileMenuOpen(false); }}
-                  className={`flex items-center justify-center gap-2 p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    currentView === 'admin'
-                      ? 'bg-amber-500 text-zinc-950 border-amber-500'
-                      : 'bg-zinc-900 text-zinc-300 border-zinc-800'
-                  }`}
-                >
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span>پنل مدیریت</span>
-                </button>
-              </div>
-
-              {onOpenTrackerModal && (
-                <button
-                  onClick={() => { onOpenTrackerModal(); setMobileMenuOpen(false); }}
-                  className="w-full flex items-center justify-between bg-zinc-900 hover:bg-zinc-850 text-amber-400 border border-amber-500/30 p-2.5 rounded-xl text-xs font-bold transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <Truck className="w-4 h-4 text-amber-400" />
-                    <span>پیگیری سفارشات و کد رهگیری پستی</span>
-                  </div>
-                  <span className="text-[10px] bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">ورود خریدار</span>
-                </button>
-              )}
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {onOpenFaceGuide && (
-                  <button
-                    onClick={() => { onOpenFaceGuide(); setMobileMenuOpen(false); }}
-                    className="flex items-center justify-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 p-2 rounded-xl text-xs font-bold transition-colors"
-                  >
-                    <Smile className="w-4 h-4 text-amber-400" />
-                    <span>راهنمای فرم صورت</span>
-                  </button>
-                )}
-
-                {onOpenLensSimulator && (
-                  <button
-                    onClick={() => { onOpenLensSimulator(); setMobileMenuOpen(false); }}
-                    className="flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 border border-zinc-800 p-2 rounded-xl text-xs font-bold transition-colors"
-                  >
-                    <Eye className="w-4 h-4 text-amber-400" />
-                    <span>شبیه‌ساز عدسی</span>
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Category Navbar Bar (Only shown in Store View) */}
         {currentView === 'store' && (
-          <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar py-1">
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {categories.map((cat) => {
-                const isSelected = selectedCategory === cat.id;
-                return (
-                  <motion.button
-                    key={cat.id}
-                    whileTap={{ scale: 0.95 }}
-                    whileHover={{ scale: 1.04 }}
-                    onClick={() => onSelectCategory(cat.id)}
-                    className={`relative shrink-0 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-medium transition-colors ${
-                      isSelected
-                        ? 'text-zinc-950 font-bold shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/80 hover:bg-zinc-800/80 border border-zinc-800/50'
-                    }`}
-                  >
-                    {isSelected && (
-                      <motion.span
-                        layoutId="activeCategoryPill"
-                        className="absolute inset-0 bg-zinc-100 rounded-xl"
-                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative z-10">{cat.label}</span>
-                  </motion.button>
-                );
-              })}
-            </div>
-
-            {/* Smart Tools (Face Shape Guide & Lens Simulator) */}
-            <div className="flex items-center gap-1.5 shrink-0 pr-2 border-r border-zinc-800/80">
-              {onOpenFaceGuide && (
-                <button
-                  onClick={() => {
-                    sound.playPop();
-                    onOpenFaceGuide();
-                  }}
-                  className="flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all shadow-sm shrink-0"
+          <div className="mt-3 pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1">
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat.id;
+              return (
+                <motion.button
+                  key={cat.id}
+                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.04 }}
+                  onClick={() => onSelectCategory(cat.id)}
+                  className={`relative shrink-0 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-medium transition-colors ${
+                    isSelected
+                      ? 'text-zinc-950 font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/80 hover:bg-zinc-800/80 border border-zinc-800/50'
+                  }`}
                 >
-                  <Smile className="w-3.5 h-3.5 text-amber-400" />
-                  <span>راهنمای فرم صورت</span>
-                </button>
-              )}
-
-              {onOpenLensSimulator && (
-                <button
-                  onClick={() => {
-                    sound.playPop();
-                    onOpenLensSimulator();
-                  }}
-                  className="flex items-center gap-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-amber-400 border border-zinc-800 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all shrink-0"
-                >
-                  <Eye className="w-3.5 h-3.5 text-amber-400" />
-                  <span>شبیه‌ساز عدسی</span>
-                </button>
-              )}
-            </div>
+                  {isSelected && (
+                    <motion.span
+                      layoutId="activeCategoryPill"
+                      className="absolute inset-0 bg-zinc-100 rounded-xl"
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10">{cat.label}</span>
+                </motion.button>
+              );
+            })}
           </div>
         )}
       </div>

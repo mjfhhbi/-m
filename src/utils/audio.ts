@@ -258,6 +258,48 @@ class SoundEngine {
   public playCartRemove() {
     this.playRemove();
   }
+
+  // Loud attention-grabbing store bell/chime for incoming orders
+  public playOrderAlert() {
+    try {
+      const ctx = this.getContext();
+      if (!ctx || !this.masterGain) return;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const now = ctx.currentTime;
+      // High-pitch dual chime repeats twice
+      const chimeChords = [
+        { timeOffset: 0.0, freq1: 659.25, freq2: 987.77 }, // E5 + B5
+        { timeOffset: 0.18, freq1: 783.99, freq2: 1318.51 }, // G5 + E6
+        { timeOffset: 0.55, freq1: 659.25, freq2: 987.77 }, // Repeat chime
+        { timeOffset: 0.73, freq1: 880.0, freq2: 1567.98 }, // A5 + G6
+      ];
+
+      chimeChords.forEach(({ timeOffset, freq1, freq2 }) => {
+        [freq1, freq2].forEach((freq) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + timeOffset);
+
+          gain.gain.setValueAtTime(0, now + timeOffset);
+          gain.gain.linearRampToValueAtTime(0.4, now + timeOffset + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + timeOffset + 0.45);
+
+          osc.connect(gain);
+          gain.connect(this.masterGain!);
+
+          osc.start(now + timeOffset);
+          osc.stop(now + timeOffset + 0.45);
+        });
+      });
+    } catch (e) {
+      console.warn('Audio alert error:', e);
+    }
+  }
 }
 
 export const sound = new SoundEngine();

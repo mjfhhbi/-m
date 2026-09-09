@@ -39,6 +39,15 @@ interface CheckoutModalProps {
   onOpenInvoice?: (order: Order) => void;
 }
 
+const formatPaymentUrl = (url?: string): string => {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
+
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   isOpen,
   onClose,
@@ -266,7 +275,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setErrorMessage('');
 
     const isOnline = paymentMethod === 'online_gateway';
-    const bankRefId = isOnline ? `ZP-${Math.floor(10000000 + Math.random() * 90000000)}` : undefined;
+    const isCustomLink = isOnline && Boolean(settings?.paymentLink?.trim());
+    const generatedRefId = `ZP-${Math.floor(10000000 + Math.random() * 90000000)}`;
+    const bankRefId = isOnline 
+      ? (transactionCodeInput.trim() ? transactionCodeInput.trim() : generatedRefId) 
+      : undefined;
 
     const nowIso = new Date().toISOString();
 
@@ -283,16 +296,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       finalAmount,
       customer: normalizedCustomer,
       paymentMethod,
-      paymentReceipt: isOnline ? undefined : receiptImage,
-      isPaid: isOnline,
+      paymentReceipt: receiptImage || undefined,
+      isPaid: isOnline && !isCustomLink,
       paymentRefId: bankRefId,
-      paymentGatewayName: isOnline ? 'درگاه آنلاین شتاب (زرین‌پال)' : undefined,
+      paymentGatewayName: isOnline 
+        ? (isCustomLink ? 'لینک اختصاصی درگاه فروشگاه' : 'درگاه آنلاین شتاب (زرین‌پال)') 
+        : undefined,
       adminNote: isOnline
-        ? `پرداخت آنلاین موفق شتاب - کد پیگیری بانک: ${bankRefId}`
+        ? isCustomLink
+          ? `پرداخت از طریق لینک اختصاصی درگاه - کد پیگیری ثبت شده: ${bankRefId}${receiptImage ? ' (فیش پیوست شد)' : ''}`
+          : `پرداخت آنلاین موفق شتاب - کد پیگیری بانک: ${bankRefId}`
         : transactionCodeInput
         ? `کد پیگیری واریز کارت به کارت: ${transactionCodeInput}`
         : undefined,
-      status: isOnline ? 'confirmed' : 'pending',
+      status: isOnline && !isCustomLink ? 'confirmed' : 'pending',
     };
 
     try {
@@ -618,30 +635,93 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
                 ) : (
                   /* Online Payment Gateway Box */
-                  <div className="bg-zinc-950 border border-emerald-500/40 p-4 rounded-xl space-y-3 text-xs">
+                  <div className="bg-zinc-950 border border-emerald-500/40 p-4 rounded-xl space-y-3.5 text-xs">
                     <div className="flex items-center gap-2 text-emerald-400 font-bold border-b border-zinc-800 pb-2.5">
                       <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
                       <div>
-                        <span className="block text-xs font-bold text-white">درگاه پرداخت آنلاین متصل به شبکه شتاب (زرین‌پال / شاپرک)</span>
-                        <span className="block text-[10px] text-emerald-400 font-normal">تضمین امنیت کامل تراکنش با کلیه کارت‌های بانکی عضو شتاب</span>
+                        <span className="block text-xs font-bold text-white">پرداخت آنلاین و اینترنتی</span>
+                        <span className="block text-[10px] text-emerald-400 font-normal">
+                          {settings?.paymentLink?.trim()
+                            ? 'اتصال مستقیم به لینک و درگاه اختصاصی پرداخت فروشگاه'
+                            : 'تضمین امنیت کامل تراکنش با کلیه کارت‌های بانکی عضو شتاب (شاپرک)'}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="space-y-2 text-zinc-300 text-[11px] leading-relaxed">
-                      <p className="flex items-center gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span>پس از زدن دکمه «انتقال به درگاه و ثبت سفارش»، به درگاه بانک هدایت می‌شوید.</span>
-                      </p>
-                      <p className="flex items-center gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span>نیاز به هیچ‌گونه عکس فیش نیست و کد پیگیری بانک به صورت آنی در اختیار شما و مدیریت قرار می‌گیرد.</span>
-                      </p>
-                      {settings?.zarinpalMerchantId && (
-                        <div className="mt-1 bg-emerald-500/10 border border-emerald-500/30 p-2 rounded-lg text-emerald-300 font-mono text-[10px]">
-                          درگاه فعال زرین‌پال: {settings.zarinpalMerchantId.slice(0, 8)}...
+                    {settings?.paymentLink?.trim() ? (
+                      <div className="space-y-3">
+                        <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-xl space-y-2.5 text-right">
+                          <div className="flex items-center justify-between text-[11px] text-zinc-300">
+                            <span>مبلغ قابل پرداخت فاکتور:</span>
+                            <span className="text-emerald-400 font-black font-mono text-sm">{formatToman(finalAmount)}</span>
+                          </div>
+                          
+                          <a
+                            href={formatPaymentUrl(settings.paymentLink)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-zinc-950 font-black py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-lg shadow-emerald-900/30 active:scale-95"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            <span>ورود به لینک درگاه پرداخت آنلاین ({formatToman(finalAmount)})</span>
+                          </a>
+
+                          <p className="text-[10px] text-zinc-400 leading-relaxed text-right">
+                            روی دکمه بالا بزنید تا صفحه پرداخت در سربرگ جدید باز شود. پس از واریز، می‌توانید کد پیگیری را در کادر زیر وارد کنید و روی ثبت سفارش بزنید.
+                          </p>
                         </div>
-                      )}
-                    </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-zinc-300 mb-1">
+                            شماره پیگیری یا ارجاع بانکی (اختیاری):
+                          </label>
+                          <input
+                            type="text"
+                            value={transactionCodeInput}
+                            onChange={(e) => setTransactionCodeInput(e.target.value)}
+                            placeholder="مثال: 948102 یا شماره تراکنش"
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 font-mono dir-ltr text-right focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+
+                        {/* Optional Receipt Attachment */}
+                        <div className="pt-1 border-t border-zinc-800/80">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-300 text-[11px] flex items-center gap-1.5">
+                              <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>تصویر رسید پرداخت (اختیاری جهت تسریع تایید):</span>
+                            </span>
+                            <label className="cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1 rounded-lg flex items-center gap-1 text-[11px] transition-colors border border-zinc-700">
+                              <Upload className="w-3 h-3 text-emerald-400" />
+                              <span>{receiptImage ? 'تغییر عکس' : 'انتخاب عکس'}</span>
+                              <input type="file" accept="image/*" onChange={handleReceiptUpload} className="hidden" />
+                            </label>
+                          </div>
+                          {receiptImage && (
+                            <div className="mt-2 p-2 bg-zinc-900 border border-emerald-500/30 rounded-xl flex items-center gap-2">
+                              <img src={receiptImage} alt="رسید پرداخت" className="w-10 h-10 rounded-lg object-cover" />
+                              <span className="text-[11px] text-emerald-400 font-medium">رسید پرداخت پیوست شد</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 text-zinc-300 text-[11px] leading-relaxed">
+                        <p className="flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>پس از زدن دکمه «انتقال به درگاه و ثبت سفارش»، به درگاه بانک هدایت می‌شوید.</span>
+                        </p>
+                        <p className="flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>نیاز به هیچ‌گونه عکس فیش نیست و کد پیگیری بانک به صورت آنی در اختیار شما و مدیریت قرار می‌گیرد.</span>
+                        </p>
+                        {settings?.zarinpalMerchantId && (
+                          <div className="mt-1 bg-emerald-500/10 border border-emerald-500/30 p-2 rounded-lg text-emerald-300 font-mono text-[10px]">
+                            درگاه فعال زرین‌پال: {settings.zarinpalMerchantId.slice(0, 8)}...
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -771,6 +851,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Direct Payment Link Action on Success (If configured) */}
+                {settings?.paymentLink?.trim() && createdOrder.paymentMethod === 'online_gateway' && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-xl text-right space-y-2 max-w-sm mx-auto">
+                    <span className="text-xs font-bold text-emerald-400 block">💳 لینک پرداخت آنلاین سفارش:</span>
+                    <p className="text-[11px] text-zinc-300">
+                      جهت واریز مبلغ فاکتور ({formatToman(createdOrder.finalAmount)})، روی دکمه زیر کلیک کنید:
+                    </p>
+                    <a
+                      href={formatPaymentUrl(settings.paymentLink)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md active:scale-95"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>پرداخت اینترنتی مبلغ {formatToman(createdOrder.finalAmount)}</span>
+                    </a>
+                  </div>
+                )}
 
                 {/* Order Confirmation Alert */}
                 <div className="bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-xl text-right flex items-center gap-3">

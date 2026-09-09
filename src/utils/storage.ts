@@ -52,6 +52,58 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 const PRODUCTS_KEY = 'stock_jahani_products_v1';
 const ORDERS_KEY = 'stock_jahani_orders_v1';
 const SETTINGS_KEY = 'stock_jahani_settings_v1';
+const DELETED_PRODUCTS_KEY = 'stock_jahani_deleted_products_v1';
+
+export function getDeletedProductIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_PRODUCTS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markProductDeleted(productId: string) {
+  try {
+    if (!productId) return;
+    const set = getDeletedProductIds();
+    set.add(productId);
+    localStorage.setItem(DELETED_PRODUCTS_KEY, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+export function unmarkProductDeleted(productId: string) {
+  try {
+    if (!productId) return;
+    const set = getDeletedProductIds();
+    if (set.has(productId)) {
+      set.delete(productId);
+      localStorage.setItem(DELETED_PRODUCTS_KEY, JSON.stringify(Array.from(set)));
+    }
+  } catch {}
+}
+
+export function getProductTimestamp(item: any): number {
+  if (!item) return 0;
+  const t = item.updatedAt || item.createdAt;
+  if (!t) return 0;
+  const parsed = new Date(t).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+export function mergeTwoProducts(p1: Product, p2: Product): Product {
+  const t1 = getProductTimestamp(p1);
+  const t2 = getProductTimestamp(p2);
+  if (t2 > t1) {
+    return { ...p1, ...p2 };
+  } else if (t1 > t2) {
+    return { ...p2, ...p1 };
+  } else {
+    return { ...p1, ...p2 };
+  }
+}
 
 export const DEFAULT_CATEGORIES: CategoryItem[] = [
   { id: 'sunglasses', label: 'عینک آفتابی' },
@@ -153,6 +205,7 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   bankName: 'بانک ملی ایران',
   accountNumber: '0102030405006',
   shebaNumber: 'IR120170000000102030405006',
+  paymentLink: '',
   telegramBotToken: '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
   telegramChatId: '8574668861',
   ntfyEnabled: true,
@@ -453,20 +506,46 @@ export function getStoredProducts(): Product[] {
   try {
     const data = localStorage.getItem(PRODUCTS_KEY);
     if (data === null) {
-      // Seed with initial authentic stock catalog
-      localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEMO_PRODUCTS));
-      return DEMO_PRODUCTS;
+      return [];
     }
     const parsed = JSON.parse(data);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const valid = parsed.filter((p) => p && p.id);
-      if (valid.length > 0) return valid;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((p) => p && p.id);
     }
-    // If empty array, fallback to DEMO_PRODUCTS
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEMO_PRODUCTS));
-    return DEMO_PRODUCTS;
+    return [];
   } catch (err) {
     console.error('Error reading products:', err);
+    return [];
+  }
+}
+
+export async function clearAllProductsRemote(): Promise<boolean> {
+  try {
+    const current = getStoredProducts();
+    current.forEach((p) => {
+      if (p && p.id) markProductDeleted(p.id);
+    });
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
+    notifyTabsOfChange();
+    await fetch('/api/clear-all-products', { method: 'POST' }).catch(() => {});
+    return true;
+  } catch (e) {
+    console.error('Error clearing products:', e);
+    return false;
+  }
+}
+
+export async function loadDemoProductsRemote(): Promise<Product[]> {
+  try {
+    DEMO_PRODUCTS.forEach((p) => {
+      if (p && p.id) unmarkProductDeleted(p.id);
+    });
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEMO_PRODUCTS));
+    notifyTabsOfChange();
+    await fetch('/api/load-demo-products', { method: 'POST' }).catch(() => {});
+    return DEMO_PRODUCTS;
+  } catch (e) {
+    console.error('Error loading demo products:', e);
     return DEMO_PRODUCTS;
   }
 }
@@ -474,26 +553,27 @@ export function getStoredProducts(): Product[] {
 export async function saveSingleProduct(product: Product, actor?: string): Promise<boolean> {
   if (!product || !product.id) return false;
   
+  unmarkProductDeleted(product.id);
   const cleanP = { ...product, updatedAt: new Date().toISOString() };
   
   // 1. Optimistic update local storage
   try {
-    const current = getStoredProducts();
-    const idx = current.findIndex((p) => p.id === product.id);
-    let updated: Product[];
-    if (idx >= 0) {
-      updated = [...current];
-      updated[idx] = cleanP;
-    } else {
-      updated = [cleanP, ...current];
-    }
+    const current = getStoredProducts().filter((p) => p && p.id !== product.id);
+    const updated = [cleanP, ...current];
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(updated));
     notifyTabsOfChange();
   } catch (e) {
     console.error('Error updating localStorage for product:', e);
   }
   
-  // 2. Execute atomic mutation via Firebase Function
+  // 2. Direct Express server endpoint /api/products/save
+  const directSavePromise = fetch('/api/products/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product: cleanP }),
+  }).catch(() => null);
+
+  // 3. Execute atomic mutation via Firebase Function
   const functionPromise = fetch('/api/functions/mutate-product', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -504,7 +584,7 @@ export async function saveSingleProduct(product: Product, actor?: string): Promi
     }),
   }).catch(() => null);
   
-  // 3. Direct Firestore client setDoc sync
+  // 4. Direct Firestore client setDoc sync
   const fsPromise = (async () => {
     try {
       await setDoc(doc(db, 'products', cleanP.id), cleanForFirestore(cleanP));
@@ -513,7 +593,7 @@ export async function saveSingleProduct(product: Product, actor?: string): Promi
     }
   })();
   
-  await Promise.allSettled([functionPromise, fsPromise]);
+  await Promise.allSettled([directSavePromise, functionPromise, fsPromise]);
   return true;
 }
 
@@ -846,6 +926,9 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
 }
 
 export async function deleteProductFromFirestore(productId: string, actor?: string): Promise<boolean> {
+  if (!productId) return false;
+  markProductDeleted(productId);
+
   // Update local storage immediately
   const remaining = getStoredProducts().filter((p) => p.id !== productId);
   try {
@@ -854,8 +937,9 @@ export async function deleteProductFromFirestore(productId: string, actor?: stri
 
   notifyTabsOfChange();
 
-  // Execute atomic deletion via Firebase Function and sync Firestore
+  // Execute atomic deletion via Express API, Firebase Function and sync Firestore
   Promise.allSettled([
+    fetch(`/api/products/${productId}`, { method: 'DELETE' }),
     fetch('/api/functions/mutate-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1032,14 +1116,61 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
   const localOrders = getStoredOrders().filter((o) => o && o.id);
   const localSettings = getStoredSettings();
 
-  // Authoritative remote selection
-  let products: Product[];
-  if (apiProducts !== null) {
-    products = apiProducts;
-  } else if (fsProducts !== null) {
-    products = fsProducts;
-  } else {
-    products = localProducts;
+  const deletedIds = getDeletedProductIds();
+  const productMap = new Map<string, Product>();
+  let hasLocalItemsToSync = false;
+
+  // 1. Add API products
+  if (Array.isArray(apiProducts)) {
+    for (const p of apiProducts) {
+      if (p && p.id && !deletedIds.has(p.id)) {
+        productMap.set(p.id, p);
+      }
+    }
+  }
+
+  // 2. Add Firestore products
+  if (Array.isArray(fsProducts)) {
+    for (const p of fsProducts) {
+      if (p && p.id && !deletedIds.has(p.id)) {
+        const existing = productMap.get(p.id);
+        if (!existing) {
+          productMap.set(p.id, p);
+        } else {
+          productMap.set(p.id, mergeTwoProducts(existing, p));
+        }
+      }
+    }
+  }
+
+  // 3. Add local products (CRITICAL: Local products are NEVER discarded by empty remote responses!)
+  if (Array.isArray(localProducts)) {
+    for (const p of localProducts) {
+      if (p && p.id && !deletedIds.has(p.id)) {
+        const existing = productMap.get(p.id);
+        if (!existing) {
+          productMap.set(p.id, p);
+          hasLocalItemsToSync = true;
+        } else {
+          const merged = mergeTwoProducts(existing, p);
+          productMap.set(p.id, merged);
+          if (getProductTimestamp(p) > getProductTimestamp(existing)) {
+            hasLocalItemsToSync = true;
+          }
+        }
+      }
+    }
+  }
+
+  const products = Array.from(productMap.values());
+
+  // Auto-sync to server if local had items the server didn't have
+  if (hasLocalItemsToSync && products.length > 0) {
+    fetch('/api/sync-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ products }),
+    }).catch(() => {});
   }
 
   let orders: Order[];
@@ -1099,11 +1230,12 @@ export function subscribeToFirestore(
     unsubFsProducts = onSnapshot(
       collection(db, 'products'),
       (snapshot) => {
+        const deletedIds = getDeletedProductIds();
         // Atomic incremental diffing using docChanges ensures state consistency
         snapshot.docChanges().forEach((change) => {
           const docData = change.doc.data() as Product;
           if (change.type === 'added' || change.type === 'modified') {
-            if (docData && docData.id) {
+            if (docData && docData.id && !deletedIds.has(docData.id)) {
               productsMap.set(docData.id, docData);
             }
           } else if (change.type === 'removed') {
@@ -1111,19 +1243,26 @@ export function subscribeToFirestore(
           }
         });
 
+        // If snapshot is empty, do NOT wipe out existing local products!
+        if (snapshot.empty && productsMap.size > 0) {
+          return;
+        }
+
         // Fallback if map is empty on cold start
         if (productsMap.size === 0 && !snapshot.empty) {
           snapshot.forEach((docSnap) => {
             const data = docSnap.data() as Product;
-            if (data && data.id) productsMap.set(data.id, data);
+            if (data && data.id && !deletedIds.has(data.id)) productsMap.set(data.id, data);
           });
         }
 
         const fsProds = Array.from(productsMap.values());
-        try {
-          localStorage.setItem(PRODUCTS_KEY, JSON.stringify(fsProds));
-        } catch (e) {}
-        onDataUpdate({ products: fsProds });
+        if (fsProds.length > 0 || deletedIds.size > 0) {
+          try {
+            localStorage.setItem(PRODUCTS_KEY, JSON.stringify(fsProds));
+          } catch (e) {}
+          onDataUpdate({ products: fsProds });
+        }
       },
       (err) => {
         handleFirestoreError(err, OperationType.LIST, 'products');
@@ -1236,7 +1375,16 @@ export function subscribeToFirestore(
           lastServerVersion = vData.version;
           const freshData = await fetchServerData();
           if (freshData) {
-            onDataUpdate(freshData);
+            const newlyAddedOrders: Order[] = [];
+            if (Array.isArray(freshData.orders)) {
+              freshData.orders.forEach((ord) => {
+                if (ord && ord.id && !ordersMap.has(ord.id)) {
+                  newlyAddedOrders.push(ord);
+                  ordersMap.set(ord.id, ord);
+                }
+              });
+            }
+            onDataUpdate({ ...freshData, newOrders: newlyAddedOrders.length > 0 ? newlyAddedOrders : undefined });
           }
         }
       }
@@ -1256,7 +1404,18 @@ export function subscribeToFirestore(
           const parsed = JSON.parse(e.data);
           if (parsed && parsed.type === 'DATA_UPDATED') {
             const fresh = await fetchServerData();
-            if (fresh) onDataUpdate(fresh);
+            if (fresh) {
+              const newlyAddedOrders: Order[] = [];
+              if (Array.isArray(fresh.orders)) {
+                fresh.orders.forEach((ord) => {
+                  if (ord && ord.id && !ordersMap.has(ord.id)) {
+                    newlyAddedOrders.push(ord);
+                    ordersMap.set(ord.id, ord);
+                  }
+                });
+              }
+              onDataUpdate({ ...fresh, newOrders: newlyAddedOrders.length > 0 ? newlyAddedOrders : undefined });
+            }
           }
         } catch (err) {}
       };

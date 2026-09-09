@@ -96,6 +96,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { ImageLazyLoader } from './ImageLazyLoader';
 import { IntroSplash } from './IntroSplash';
+import { sound } from '../utils/audio';
 
 interface AdminPanelProps {
   products: Product[];
@@ -108,6 +109,7 @@ interface AdminPanelProps {
   onSaveSettings: (settings: StoreSettings) => void;
   onShowToast: (msg: string) => void;
   onLoadDemoProducts?: () => void;
+  onClearAllProducts?: () => void;
   onOpenInvoice?: (order: Order) => void;
   onRefreshData?: () => Promise<void> | void;
 }
@@ -123,6 +125,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onSaveSettings,
   onShowToast,
   onLoadDemoProducts,
+  onClearAllProducts,
   onOpenInvoice,
   onRefreshData,
 }) => {
@@ -978,14 +981,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              {onClearAllProducts && products.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmModal({
+                      title: 'پاکسازی عینک‌های پیش‌فرض و فرضی',
+                      description: 'آیا می‌خواهید تمامی عینک‌های فعلی را پاک کنید تا فقط عینک‌های واقعی که خودتان ثبت می‌کنید در فروشگاه قرار گیرند؟',
+                      confirmText: 'بله، همه را پاک کن',
+                      isDangerous: true,
+                      onConfirm: () => {
+                        setConfirmModal(null);
+                        onClearAllProducts();
+                      }
+                    });
+                  }}
+                  className="bg-zinc-800/80 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 border border-zinc-700/80 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors"
+                  title="پاکسازی نمونه‌ها جهت ثبت محصولات خودتان"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>پاکسازی عینک‌های فرضی</span>
+                </button>
+              )}
+
               {onLoadDemoProducts && products.length === 0 && (
                 <button
                   onClick={onLoadDemoProducts}
                   className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>بارگذاری چند نمونه تست</span>
+                  <span>بارگذاری مجدد نمونه‌ها</span>
                 </button>
               )}
 
@@ -2444,6 +2470,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
+          {/* Audio & Browser Notification Alerts */}
+          <div className="bg-zinc-950 border border-amber-500/40 rounded-2xl p-4 space-y-3 relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-xs font-bold text-amber-400">
+                    زنگ هشدار صوتی و اعلان دسکتاپ/مرورگر (لحظه‌ای به محض ثبت سفارش)
+                  </h4>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                  به محض اینکه هر مشتری عینکی را سفارش دهد، صدای زنگ بلند دو‌مرحله‌ای پخش می‌شود و پنجره هشدار باز می‌گردد.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playOrderAlert();
+                  onShowToast('🔔 زنگ هشدار سفارش پخش شد (تست موفق)');
+                }}
+                className="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all shadow-md shadow-amber-500/20"
+              >
+                <Volume2 className="w-4 h-4" />
+                <span>تست صدای زنگ سفارش (زنگ دینگ‌دانگ)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (typeof window !== 'undefined' && 'Notification' in window) {
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                      new Notification('🔔 عینک استوک جهانی', {
+                        body: 'اعلان‌های مرورگر با موفقیت فعال شدند. به محض ثبت سفارش به شما پیام داده می‌شود.',
+                        icon: '/favicon.ico'
+                      });
+                      onShowToast('✅ نوتیفیکیشن مرورگر با موفقیت فعال شد!');
+                    } else {
+                      onShowToast('دسترسی نوتیفیکیشن توسط مرورگر مسدود است. لطفاً در تنظیمات مرورگر اجازه دهید.');
+                    }
+                  } else {
+                    onShowToast('مرورگر شما از نوتیفیکیشن پشتیبانی نمی‌کند.');
+                  }
+                }}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors"
+              >
+                <Bell className="w-4 h-4 text-amber-400" />
+                <span>فعال‌سازی نوتیفیکیشن مرورگر در پس‌زمینه</span>
+              </button>
+            </div>
+          </div>
+
           {/* NTFY Push Notifications Section (Works without VPN in Iran) */}
           <div className="bg-zinc-950 border border-emerald-500/40 rounded-2xl p-4 space-y-3.5 relative overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
@@ -2731,6 +2814,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-amber-400 font-mono dir-ltr text-right"
                 />
               </div>
+            </div>
+
+            {/* Direct Custom Payment Link (ZarinPal personal link, IDPay, NextPay, PayPing, etc.) */}
+            <div className="border-t border-zinc-800 pt-3.5 space-y-2">
+              <label className="block text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <ExternalLink className="w-4 h-4 text-amber-400" />
+                <span>لینک اختصاصی درگاه پرداخت یا تسویه‌حساب آنلاین (اختیاری)</span>
+              </label>
+              <input
+                type="text"
+                value={tempSettings.paymentLink || ''}
+                onChange={(e) => setTempSettings({ ...tempSettings, paymentLink: e.target.value.trim() })}
+                placeholder="https://zarinp.al/yourname یا https://idpay.ir/yourname یا لینک مستقیم درگاه"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-amber-300 font-mono dir-ltr text-left focus:outline-none focus:border-amber-500"
+              />
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                💡 <strong>پشتیبانی از انواع لینک پرداخت:</strong> اگر از زرین‌پال (زرین‌لینک zarinp.al)، آیدی‌پی (idpay.ir)، زیبال، پی‌پینگ یا هر سرویس دیگری لینک پرداخت شخصی یا درگاه دارید، آدرس آن را اینجا قرار دهید. مشتریان در صفحه پرداخت با یک کلیک به لینک شما هدایت می‌شوند و فاکتور را پرداخت می‌کنند.
+              </p>
             </div>
 
             {/* ZarinPal Gateway Settings */}

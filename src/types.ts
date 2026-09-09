@@ -140,6 +140,7 @@ export interface StoreSettings {
   accountNumber?: string;
   shebaNumber?: string;
   enableOnlineGateway?: boolean;
+  paymentLink?: string;
   zarinpalMerchantId?: string;
   zarinpalSandbox?: boolean;
   seoTitle?: string;
