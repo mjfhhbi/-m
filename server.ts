@@ -4,7 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Security & CORS middleware for all devices & webviews
 app.use((req, res, next) => {
@@ -649,11 +649,28 @@ app.get("/api/version", (req, res) => {
 
 app.get("/api/data", (req, res) => {
   const data = readData();
+  const safeSettings = { ...(data.settings || DEFAULT_SETTINGS) };
+  delete (safeSettings as any).adminPasscode; // CRITICAL: NEVER leak admin passcode over public API
   res.json({
     products: data.products || [],
     orders: data.orders || [],
-    settings: data.settings || DEFAULT_SETTINGS,
+    settings: safeSettings,
   });
+});
+
+app.post("/api/admin/login", (req, res) => {
+  const { passcode } = req.body || {};
+  if (!passcode) {
+    return res.status(400).json({ success: false, error: "رمز عبور را وارد کنید" });
+  }
+  const data = readData();
+  const configuredPasscode = process.env.ADMIN_PASSCODE || data.settings?.adminPasscode || '1383';
+  if (String(passcode).trim() === String(configuredPasscode).trim()) {
+    // Generate secure randomized session token
+    const token = 'adm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    return res.json({ success: true, token });
+  }
+  return res.status(401).json({ success: false, error: "رمز عبور مدیریت اشتباه است" });
 });
 
 app.get("/api/products", (req, res) => {
@@ -996,7 +1013,7 @@ async function dispatchOrderToNtfy(data: any, settings: any) {
       'Title': `=?UTF-8?B?${Buffer.from(`🛒 سفارش جدید ${orderCode}`).toString('base64')}?=`,
       'Priority': 'urgent',
       'Tags': 'eyeglasses,tada,moneybag',
-      'Click': 'https://ais-pre-luwgyx4c4a4ugnvqzm4umc-246919081791.europe-west2.run.app',
+      'Click': process.env.APP_URL || process.env.PUBLIC_URL || 'http://localhost:3000',
       'Content-Type': 'text/plain; charset=utf-8'
     };
 

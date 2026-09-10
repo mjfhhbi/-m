@@ -1,6 +1,6 @@
 import { Product, Order, OrderStatus, StoreSettings, CategoryItem, CouponCode, VisitorStats, VisitLog, AuditLogEntry } from '../types';
 import { db, auth } from '../lib/firebase';
-import { collection, getDocs, doc, setDoc, getDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy, limit, runTransaction } from 'firebase/firestore';
 
 export enum OperationType {
   CREATE = 'create',
@@ -520,61 +520,100 @@ export function getStoredProducts(): Product[] {
 }
 
 export async function clearAllProductsRemote(): Promise<boolean> {
+  console.log('[CLEAR_ALL_PRODUCTS_START]');
   try {
-    const current = getStoredProducts();
-    current.forEach((p) => {
-      if (p && p.id) markProductDeleted(p.id);
-    });
+    const snap = await getDocs(collection(db, 'products'));
+    const batch = writeBatch(db);
+    snap.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    console.log(`[CLEAR_ALL_PRODUCTS_SUCCESS] Cleared ${snap.size} products from Firestore`);
+  } catch (e) {
+    console.error('Error clearing products in Firestore:', e);
+  }
+  try {
+    localStorage.removeItem(DELETED_PRODUCTS_KEY);
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
     notifyTabsOfChange();
-    await fetch('/api/clear-all-products', { method: 'POST' }).catch(() => {});
-    return true;
-  } catch (e) {
-    console.error('Error clearing products:', e);
-    return false;
-  }
+  } catch (e) {}
+  await fetch('/api/clear-all-products', { method: 'POST' }).catch(() => {});
+  return true;
 }
 
 export async function loadDemoProductsRemote(): Promise<Product[]> {
+  console.log('[LOAD_DEMO_PRODUCTS_START]');
   try {
+    const batch = writeBatch(db);
     DEMO_PRODUCTS.forEach((p) => {
-      if (p && p.id) unmarkProductDeleted(p.id);
+      if (p && p.id) {
+        batch.set(doc(db, 'products', p.id), cleanForFirestore(p));
+      }
     });
+    await batch.commit();
+    console.log(`[LOAD_DEMO_PRODUCTS_SUCCESS] Loaded ${DEMO_PRODUCTS.length} demo products to Firestore`);
+  } catch (e) {
+    console.error('Error loading demo products to Firestore:', e);
+  }
+  try {
+    localStorage.removeItem(DELETED_PRODUCTS_KEY);
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEMO_PRODUCTS));
     notifyTabsOfChange();
-    await fetch('/api/load-demo-products', { method: 'POST' }).catch(() => {});
-    return DEMO_PRODUCTS;
-  } catch (e) {
-    console.error('Error loading demo products:', e);
-    return DEMO_PRODUCTS;
-  }
+  } catch (e) {}
+  await fetch('/api/load-demo-products', { method: 'POST' }).catch(() => {});
+  return DEMO_PRODUCTS;
 }
 
 export async function saveSingleProduct(product: Product, actor?: string): Promise<boolean> {
-  if (!product || !product.id) return false;
+  if (!product || !product.id) {
+    console.error('[PRODUCT_CREATE_ERROR] Invalid product object or missing ID', product);
+    return false;
+  }
   
+  console.log('[PRODUCT_CREATE_START]', {
+    id: product.id,
+    title: product.title,
+    code: product.code,
+    price: product.price,
+    stock: product.stock,
+    category: product.category,
+  });
+
   unmarkProductDeleted(product.id);
-  const cleanP = { ...product, updatedAt: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const cleanP: Product = { 
+    ...product, 
+    createdAt: product.createdAt || now,
+    updatedAt: now 
+  };
   
-  // 1. Optimistic update local storage
+  const payload = cleanForFirestore(cleanP);
+
+  // 1. Direct authoritative write to Firestore with strict await
+  try {
+    await setDoc(doc(db, 'products', cleanP.id), payload);
+    console.log('[FIRESTORE_WRITE_SUCCESS]', { id: cleanP.id, title: cleanP.title, updatedAt: cleanP.updatedAt });
+  } catch (err: any) {
+    console.error('[PRODUCT_CREATE_ERROR] Firestore write failed:', err);
+    throw new Error(err?.message || 'خطا در برقراری ارتباط و ذخیره در دیتابیس Firestore');
+  }
+
+  // 2. Secondary update to local storage cache (as fallback cache only)
   try {
     const current = getStoredProducts().filter((p) => p && p.id !== product.id);
     const updated = [cleanP, ...current];
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(updated));
     notifyTabsOfChange();
   } catch (e) {
-    console.error('Error updating localStorage for product:', e);
+    console.warn('[CACHE_NOTICE] Error updating localStorage cache:', e);
   }
   
-  // 2. Direct Express server endpoint /api/products/save
-  const directSavePromise = fetch('/api/products/save', {
+  // 3. Keep Express backend server synchronized with Firestore in background
+  fetch('/api/products/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ product: cleanP }),
   }).catch(() => null);
 
-  // 3. Execute atomic mutation via Firebase Function
-  const functionPromise = fetch('/api/functions/mutate-product', {
+  fetch('/api/functions/mutate-product', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -584,16 +623,6 @@ export async function saveSingleProduct(product: Product, actor?: string): Promi
     }),
   }).catch(() => null);
   
-  // 4. Direct Firestore client setDoc sync
-  const fsPromise = (async () => {
-    try {
-      await setDoc(doc(db, 'products', cleanP.id), cleanForFirestore(cleanP));
-    } catch (e) {
-      console.warn('Firestore single setDoc notice:', e);
-    }
-  })();
-  
-  await Promise.allSettled([directSavePromise, functionPromise, fsPromise]);
   return true;
 }
 
@@ -603,6 +632,7 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
     updatedAt: p.updatedAt || new Date().toISOString(),
   }));
 
+  // Update local storage cache only (never overwrite Firestore collections in bulk)
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(validProducts));
     notifyTabsOfChange();
@@ -610,45 +640,13 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
     console.error('Error saving products locally:', err);
   }
 
-  // 1. Send authoritative list to Express Server API
-  const apiPromise = fetch('/api/products', {
+  // Mirror to Express Server API cache
+  fetch('/api/products', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ products: validProducts }),
   }).catch(() => {});
 
-  // 2. Sync to Firestore
-  const firestorePromise = (async () => {
-    try {
-      const existingSnap = await withTimeout(getDocs(collection(db, 'products')), 3000);
-      const currentIds = new Set(validProducts.map((p) => p.id));
-      const batch = writeBatch(db);
-
-      if (existingSnap) {
-        existingSnap.forEach((docSnap) => {
-          if (!currentIds.has(docSnap.id)) {
-            batch.delete(docSnap.ref);
-          }
-        });
-      }
-
-      validProducts.forEach((p) => {
-        const cleanP = cleanForFirestore(p);
-        batch.set(doc(db, 'products', p.id), cleanP);
-      });
-
-      await batch.commit();
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'products');
-      for (const p of validProducts) {
-        try {
-          await setDoc(doc(db, 'products', p.id), cleanForFirestore(p));
-        } catch (e) {}
-      }
-    }
-  })();
-
-  await Promise.allSettled([firestorePromise, withTimeout(apiPromise, 3000)]);
   return true;
 }
 
@@ -764,7 +762,7 @@ export function mergeOrdersList(...lists: Order[][]): Order[] {
 export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
   const validOrders = (orders || []).filter((o) => o && o.id);
 
-  // 1. Immediate local storage update
+  // 1. Immediate local storage update (cache only)
   try {
     localStorage.setItem(ORDERS_KEY, JSON.stringify(validOrders));
     notifyTabsOfChange();
@@ -774,107 +772,104 @@ export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
 
   const cleanOrders = validOrders.map(cleanForFirestore);
 
-  // 2. Immediate Server API sync (/api/orders)
+  // 2. Mirror to Express Server API cache
   fetch('/api/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orders: cleanOrders }),
   }).catch(() => {});
 
-  // 3. Persistent Firestore sync
-  (async () => {
-    try {
-      const existingSnap = await withTimeout(getDocs(collection(db, 'orders')), 3000);
-      const currentIds = new Set(validOrders.map((o) => o.id));
-      const batch = writeBatch(db);
-
-      if (existingSnap) {
-        existingSnap.forEach((docSnap) => {
-          if (!currentIds.has(docSnap.id)) {
-            batch.delete(docSnap.ref);
-          }
-        });
-      }
-
-      cleanOrders.forEach((o) => {
-        batch.set(doc(db, 'orders', o.id), o);
-      });
-
-      await batch.commit();
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'orders');
-      for (const o of cleanOrders) {
-        try {
-          await setDoc(doc(db, 'orders', o.id), o);
-        } catch (e) {}
-      }
-    }
-  })();
-
   return true;
 }
 
-export async function saveSingleOrder(order: Order, actor?: string): Promise<boolean> {
+export async function saveSingleOrder(order: Order, actor?: string): Promise<{ success: boolean; error?: string }> {
   const cleanOrder: Order = {
     ...cleanForFirestore(order),
     createdAt: order.createdAt || new Date().toISOString(),
     updatedAt: order.updatedAt || new Date().toISOString(),
   };
 
-  // 1. Save to local storage instantly (0ms)
-  let savedLocal = false;
   try {
-    const existing = getStoredOrders();
-    const updated = [cleanOrder, ...existing.filter((o) => o.id !== cleanOrder.id)];
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(updated));
-    notifyTabsOfChange();
-    savedLocal = true;
-  } catch (err) {
-    console.error('Error saving order to localStorage:', err);
-  }
+    // 1. Strict Atomic Transaction on Firestore: guarantees atomic stock decrement & race-free order creation
+    await runTransaction(db, async (transaction) => {
+      // Step A: Read current stock for all items
+      const productUpdates: { ref: any; newStock: number; title: string }[] = [];
 
-  // 2. Decrement product stock locally
-  try {
-    const currentProducts = getStoredProducts();
-    let stockChanged = false;
-    const updatedProducts = currentProducts.map((p) => {
-      const itemInOrder = order.items.find((i) => i.product && i.product.id === p.id);
-      if (itemInOrder) {
-        stockChanged = true;
-        const newStock = Math.max(0, p.stock - itemInOrder.quantity);
-        return { ...p, stock: newStock, updatedAt: new Date().toISOString() };
+      for (const item of cleanOrder.items) {
+        if (!item.product || !item.product.id) continue;
+        const pRef = doc(db, 'products', item.product.id);
+        const pDoc = await transaction.get(pRef);
+
+        if (!pDoc.exists()) {
+          throw new Error(`عینک «${item.product.title || item.product.id}» در فروشگاه یافت نشد.`);
+        }
+
+        const pData = pDoc.data() as Product;
+        const currentStock = typeof pData.stock === 'number' ? pData.stock : 0;
+
+        if (currentStock < item.quantity) {
+          throw new Error(
+            `متأسفانه موجودی عینک «${pData.title}» کافی نیست (موجودی فعلی: ${currentStock} عدد، درخواستی: ${item.quantity} عدد).`
+          );
+        }
+
+        productUpdates.push({
+          ref: pRef,
+          newStock: currentStock - item.quantity,
+          title: pData.title,
+        });
       }
-      return p;
+
+      // Step B: Atomically decrement stock
+      for (const update of productUpdates) {
+        transaction.update(update.ref, {
+          stock: update.newStock,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      // Step C: Atomically write order document
+      const orderRef = doc(db, 'orders', cleanOrder.id);
+      transaction.set(orderRef, cleanOrder);
+
+      // Step D: Write audit log
+      const auditRef = doc(db, 'audit_logs', `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+      transaction.set(auditRef, {
+        id: auditRef.id,
+        timestamp: new Date().toISOString(),
+        action: 'ثبت سفارش جدید',
+        details: `سفارش #${cleanOrder.orderCode} توسط ${cleanOrder.customer?.fullName || 'مشتری'} به مبلغ ${cleanOrder.finalAmount.toLocaleString('fa-IR')} تومان ثبت شد.`,
+        actor: actor || (cleanOrder.customer?.fullName ? `مشتری: ${cleanOrder.customer.fullName}` : 'مشتری آنلاین'),
+        orderId: cleanOrder.id,
+      });
     });
-    if (stockChanged) {
-      saveStoredProducts(updatedProducts);
-    }
-  } catch (e) {
-    console.error('Error updating stock after order placement:', e);
+
+    console.log('[FIRESTORE_ORDER_TRANSACTION_SUCCESS]', cleanOrder.id);
+
+    // 2. Local cache update for instant UI feedback
+    try {
+      const existing = getStoredOrders();
+      const updated = [cleanOrder, ...existing.filter((o) => o.id !== cleanOrder.id)];
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(updated));
+      notifyTabsOfChange();
+    } catch (err) {}
+
+    // 3. Mirror to Express server as backup
+    fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orders: [cleanOrder] }),
+    }).catch(() => null);
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[FIRESTORE_ORDER_TRANSACTION_ERROR]', err);
+    handleFirestoreError(err, OperationType.WRITE, `orders/${cleanOrder.id}`);
+    return {
+      success: false,
+      error: err?.message || 'خطا در ثبت سفارش در پایگاه داده ابری فایراستور',
+    };
   }
-
-  // 3. Dispatch atomic mutation via Firebase Function mutate-order
-  const actorName = actor || (order.customer?.fullName ? `مشتری: ${order.customer.fullName}` : 'مشتری');
-  const functionPromise = fetch('/api/functions/mutate-order', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'create',
-      order: cleanOrder,
-      actor: actorName,
-    }),
-  }).catch(() => null);
-
-  // 4. Direct Firestore client setDoc sync
-  const firestorePromise = setDoc(doc(db, 'orders', cleanOrder.id), cleanOrder)
-    .then(() => true)
-    .catch((err) => {
-      handleFirestoreError(err, OperationType.WRITE, `orders/${cleanOrder.id}`);
-      return false;
-    });
-
-  await Promise.allSettled([functionPromise, firestorePromise]);
-  return true;
 }
 
 export function getStoredSettings(): StoreSettings {
@@ -910,26 +905,44 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
     console.error('Error saving settings locally:', err);
   }
 
-  // Sync to Server API
+  // 1. Prepare safe settings for public Firestore document (never expose adminPasscode publicly)
+  const safeFirestoreSettings = { ...updatedSettings };
+  delete safeFirestoreSettings.adminPasscode;
+
+  // 2. Authoritative Firestore settings write with strict await
+  try {
+    await setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(safeFirestoreSettings));
+    console.log('[FIRESTORE_SETTINGS_SUCCESS]');
+  } catch (err) {
+    console.error('[FIRESTORE_SETTINGS_ERROR]', err);
+    handleFirestoreError(err, OperationType.WRITE, 'settings/store_settings');
+  }
+
+  // 3. Mirror to Server API
   fetch('/api/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ settings: updatedSettings }),
   }).catch(() => {});
 
-  // Primary Firestore settings sync
-  setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(updatedSettings)).catch((err) => {
-    handleFirestoreError(err, OperationType.WRITE, 'settings/store_settings');
-  });
-
   return true;
 }
 
 export async function deleteProductFromFirestore(productId: string, actor?: string): Promise<boolean> {
   if (!productId) return false;
+  console.log('[PRODUCT_DELETE_START]', productId);
   markProductDeleted(productId);
 
-  // Update local storage immediately
+  // 1. Authoritative Firestore deletion with strict await
+  try {
+    await deleteDoc(doc(db, 'products', productId));
+    console.log('[FIRESTORE_DELETE_SUCCESS]', productId);
+  } catch (err: any) {
+    console.error('[PRODUCT_DELETE_ERROR]', err);
+    throw new Error(err?.message || 'خطا در حذف محصول از دیتابیس Firestore');
+  }
+
+  // 2. Update local storage cache
   const remaining = getStoredProducts().filter((p) => p.id !== productId);
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(remaining));
@@ -937,28 +950,35 @@ export async function deleteProductFromFirestore(productId: string, actor?: stri
 
   notifyTabsOfChange();
 
-  // Execute atomic deletion via Express API, Firebase Function and sync Firestore
-  Promise.allSettled([
-    fetch(`/api/products/${productId}`, { method: 'DELETE' }),
-    fetch('/api/functions/mutate-product', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'delete',
-        productId,
-        actor: actor || 'مدیریت (Admin Panel)',
-      }),
+  // 3. Keep backend and audit trail in sync
+  fetch(`/api/products/${productId}`, { method: 'DELETE' }).catch(() => {});
+  fetch('/api/functions/mutate-product', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'delete',
+      productId,
+      actor: actor || 'مدیریت (Admin Panel)',
     }),
-    deleteDoc(doc(db, 'products', productId)).catch((err) => {
-      handleFirestoreError(err, OperationType.DELETE, `products/${productId}`);
-    }),
-  ]).catch(() => {});
+  }).catch(() => {});
 
   return true;
 }
 
 export async function deleteOrderFromFirestore(orderId: string, actor?: string): Promise<boolean> {
-  // Update local storage immediately
+  if (!orderId) return false;
+
+  // 1. Authoritative Firestore deletion with strict await
+  try {
+    await deleteDoc(doc(db, 'orders', orderId));
+    console.log('[FIRESTORE_ORDER_DELETE_SUCCESS]', orderId);
+  } catch (err: any) {
+    console.error('[ORDER_DELETE_ERROR]', err);
+    handleFirestoreError(err, OperationType.DELETE, `orders/${orderId}`);
+    throw new Error(err?.message || 'خطا در حذف سفارش از دیتابیس فایراستور');
+  }
+
+  // 2. Update local storage cache
   const remaining = getStoredOrders().filter((o) => o.id !== orderId);
   try {
     localStorage.setItem(ORDERS_KEY, JSON.stringify(remaining));
@@ -966,21 +986,17 @@ export async function deleteOrderFromFirestore(orderId: string, actor?: string):
 
   notifyTabsOfChange();
 
-  // Execute atomic deletion via Firebase Function and sync Firestore
-  Promise.allSettled([
-    fetch('/api/functions/mutate-order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'delete',
-        orderId,
-        actor: actor || 'مدیریت (Admin Panel)',
-      }),
+  // 3. Keep backend and audit trail in sync
+  fetch(`/api/orders/${orderId}`, { method: 'DELETE' }).catch(() => {});
+  fetch('/api/functions/mutate-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'delete',
+      orderId,
+      actor: actor || 'مدیریت (Admin Panel)',
     }),
-    deleteDoc(doc(db, 'orders', orderId)).catch((err) => {
-      handleFirestoreError(err, OperationType.DELETE, `orders/${orderId}`);
-    }),
-  ]).catch(() => {});
+  }).catch(() => {});
 
   return true;
 }
@@ -992,26 +1008,37 @@ export async function updateOrderStatusRemote(
   adminNote?: string,
   actor?: string
 ): Promise<boolean> {
-  // 1. Optimistic update local storage
+  if (!orderId) return false;
+
+  const patch: Record<string, any> = {
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  if (postalTrackingCode !== undefined) patch.postalTrackingCode = postalTrackingCode;
+  if (adminNote !== undefined) patch.adminNote = adminNote;
+
+  // 1. Authoritative Firestore update with strict await
+  try {
+    await updateDoc(doc(db, 'orders', orderId), patch);
+    console.log('[FIRESTORE_ORDER_STATUS_SUCCESS]', orderId, status);
+  } catch (err: any) {
+    console.error('[ORDER_STATUS_UPDATE_ERROR]', err);
+    handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
+    throw new Error(err?.message || 'خطا در به‌روزرسانی وضعیت سفارش در دیتابیس فایراستور');
+  }
+
+  // 2. Update local storage cache
   const currentOrders = getStoredOrders();
   const updatedOrders = currentOrders.map((o) =>
-    o.id === orderId
-      ? {
-          ...o,
-          status,
-          ...(postalTrackingCode !== undefined ? { postalTrackingCode } : {}),
-          ...(adminNote !== undefined ? { adminNote } : {}),
-          updatedAt: new Date().toISOString(),
-        }
-      : o
+    o.id === orderId ? { ...o, ...patch } : o
   );
   try {
     localStorage.setItem(ORDERS_KEY, JSON.stringify(updatedOrders));
   } catch (e) {}
   notifyTabsOfChange();
 
-  // 2. Dispatch atomic status mutation via Firebase Function
-  const functionPromise = fetch('/api/functions/mutate-order', {
+  // 3. Keep backend and audit trail in sync
+  fetch('/api/functions/mutate-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1024,40 +1051,59 @@ export async function updateOrderStatusRemote(
     }),
   }).catch(() => null);
 
-  // 3. Direct Firestore client setDoc/update sync
-  const firestorePromise = (async () => {
-    try {
-      const existing = currentOrders.find((o) => o.id === orderId);
-      if (existing) {
-        const patch = {
-          ...existing,
-          status,
-          ...(postalTrackingCode !== undefined ? { postalTrackingCode } : {}),
-          ...(adminNote !== undefined ? { adminNote } : {}),
-          updatedAt: new Date().toISOString(),
-        };
-        await setDoc(doc(db, 'orders', orderId), cleanForFirestore(patch));
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `orders/${orderId}`);
-    }
-  })();
-
-  await Promise.allSettled([functionPromise, firestorePromise]);
   return true;
 }
 
-// Fetch authoritative shared data from Express Server API and Firestore, with local storage cache fallback
+// Fetch authoritative shared data from Firestore and Express Server API, with local storage cache fallback
 export async function fetchServerData(): Promise<{ products: Product[]; orders: Order[]; settings: StoreSettings }> {
-  let apiProducts: Product[] | null = null;
-  let apiOrders: Order[] | null = null;
-  let apiSettings: StoreSettings | null = null;
-
   let fsProducts: Product[] | null = null;
   let fsOrders: Order[] | null = null;
   let fsSettings: StoreSettings | null = null;
 
-  // 1. Fetch from Express Server API (Primary ultra-fast source ~10ms)
+  let apiProducts: Product[] | null = null;
+  let apiOrders: Order[] | null = null;
+  let apiSettings: StoreSettings | null = null;
+
+  // 1. Fetch from Firestore concurrently (Authoritative Source of Truth)
+  const firestoreFetchPromise = (async () => {
+    try {
+      const [productsSnap, ordersSnap, settingsDoc] = await Promise.all([
+        withTimeout(getDocs(collection(db, 'products')), 4000).catch((err) => {
+          handleFirestoreError(err, OperationType.LIST, 'products');
+          return null;
+        }),
+        withTimeout(getDocs(collection(db, 'orders')), 3000).catch((err) => {
+          handleFirestoreError(err, OperationType.LIST, 'orders');
+          return null;
+        }),
+        withTimeout(getDoc(doc(db, 'settings', 'store_settings')), 3000).catch((err) => {
+          handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
+          return null;
+        }),
+      ]);
+
+      if (productsSnap) {
+        fsProducts = [];
+        productsSnap.forEach((d) => {
+          if (d.exists()) {
+            const data = d.data() as Product;
+            if (data && data.id) fsProducts!.push(data);
+          }
+        });
+      }
+      if (ordersSnap) {
+        fsOrders = [];
+        ordersSnap.forEach((d) => d.exists() && fsOrders!.push(d.data() as Order));
+      }
+      if (settingsDoc && settingsDoc.exists()) {
+        fsSettings = settingsDoc.data() as StoreSettings;
+      }
+    } catch (e) {
+      console.warn('Firestore fetch notice in fetchServerData:', e);
+    }
+  })();
+
+  // 2. Fetch from Express Server API
   const apiFetchPromise = (async () => {
     try {
       const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
@@ -1074,122 +1120,55 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
     }
   })();
 
-  // 2. Fetch from Firestore concurrently (non-blocking)
-  const firestoreFetchPromise = (async () => {
-    try {
-      const [ordersSnap, productsSnap, settingsDoc] = await Promise.all([
-        getDocs(collection(db, 'orders')).catch((err) => {
-          handleFirestoreError(err, OperationType.LIST, 'orders');
-          return null;
-        }),
-        getDocs(collection(db, 'products')).catch((err) => {
-          handleFirestoreError(err, OperationType.LIST, 'products');
-          return null;
-        }),
-        getDoc(doc(db, 'settings', 'store_settings')).catch((err) => {
-          handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
-          return null;
-        }),
-      ]);
-
-      if (ordersSnap) {
-        fsOrders = [];
-        ordersSnap.forEach((d) => d.exists() && fsOrders!.push(d.data() as Order));
-      }
-      if (productsSnap) {
-        fsProducts = [];
-        productsSnap.forEach((d) => d.exists() && fsProducts!.push(d.data() as Product));
-      }
-      if (settingsDoc && settingsDoc.exists()) {
-        fsSettings = settingsDoc.data() as StoreSettings;
-      }
-    } catch (e) {}
-  })();
-
-  // Wait for the fast API response first, or max 800ms for Firestore if API is unavailable
-  await withTimeout(apiFetchPromise, 800).catch(() => {});
-  if (apiProducts === null) {
-    await withTimeout(firestoreFetchPromise, 800).catch(() => {});
-  }
+  // Await both Firestore and API responses
+  await Promise.allSettled([firestoreFetchPromise, apiFetchPromise]);
 
   const localProducts = getStoredProducts().filter((p) => p && p.id);
   const localOrders = getStoredOrders().filter((o) => o && o.id);
   const localSettings = getStoredSettings();
 
-  const deletedIds = getDeletedProductIds();
-  const productMap = new Map<string, Product>();
-  let hasLocalItemsToSync = false;
-
-  // 1. Add API products
-  if (Array.isArray(apiProducts)) {
-    for (const p of apiProducts) {
-      if (p && p.id && !deletedIds.has(p.id)) {
-        productMap.set(p.id, p);
-      }
+  // Primary: Firestore products is the Source of Truth
+  let products: Product[];
+  if (fsProducts !== null) {
+    products = fsProducts;
+    // Keep server API in sync with Firestore
+    if (fsProducts.length > 0) {
+      fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products: fsProducts }),
+      }).catch(() => {});
     }
+  } else if (apiProducts !== null && apiProducts.length > 0) {
+    products = apiProducts;
+  } else {
+    products = localProducts;
   }
 
-  // 2. Add Firestore products
-  if (Array.isArray(fsProducts)) {
-    for (const p of fsProducts) {
-      if (p && p.id && !deletedIds.has(p.id)) {
-        const existing = productMap.get(p.id);
-        if (!existing) {
-          productMap.set(p.id, p);
-        } else {
-          productMap.set(p.id, mergeTwoProducts(existing, p));
-        }
-      }
-    }
-  }
-
-  // 3. Add local products (CRITICAL: Local products are NEVER discarded by empty remote responses!)
-  if (Array.isArray(localProducts)) {
-    for (const p of localProducts) {
-      if (p && p.id && !deletedIds.has(p.id)) {
-        const existing = productMap.get(p.id);
-        if (!existing) {
-          productMap.set(p.id, p);
-          hasLocalItemsToSync = true;
-        } else {
-          const merged = mergeTwoProducts(existing, p);
-          productMap.set(p.id, merged);
-          if (getProductTimestamp(p) > getProductTimestamp(existing)) {
-            hasLocalItemsToSync = true;
-          }
-        }
-      }
-    }
-  }
-
-  const products = Array.from(productMap.values());
-
-  // Auto-sync to server if local had items the server didn't have
-  if (hasLocalItemsToSync && products.length > 0) {
-    fetch('/api/sync-all', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ products }),
-    }).catch(() => {});
-  }
+  // Sort descending by date
+  products.sort((a, b) => {
+    const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
 
   let orders: Order[];
-  if (apiOrders !== null) {
-    orders = apiOrders;
-  } else if (fsOrders !== null) {
+  if (fsOrders !== null) {
     orders = fsOrders;
+  } else if (apiOrders !== null) {
+    orders = apiOrders;
   } else {
     orders = localOrders;
   }
 
   let settings: StoreSettings;
-  if (apiSettings !== null || fsSettings !== null) {
-    settings = mergeSettingsObjects(DEFAULT_SETTINGS, fsSettings, apiSettings);
+  if (fsSettings !== null || apiSettings !== null) {
+    settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings, apiSettings);
   } else {
     settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings);
   }
 
-  // Update local cache so it matches the authoritative state instantly
+  // Update local cache so it matches the authoritative state
   try {
     localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
@@ -1208,14 +1187,9 @@ export function subscribeToFirestore(
   let isPolling = false;
 
   // Active in-memory atomic maps to prevent race conditions across browser instances
-  const productsMap = new Map<string, Product>();
   const ordersMap = new Map<string, Order>();
   let hasInitialOrdersLoaded = false;
 
-  // Initialize from cache
-  getStoredProducts().forEach((p) => {
-    if (p && p.id) productsMap.set(p.id, p);
-  });
   getStoredOrders().forEach((o) => {
     if (o && o.id) ordersMap.set(o.id, o);
   });
@@ -1230,41 +1204,33 @@ export function subscribeToFirestore(
     unsubFsProducts = onSnapshot(
       collection(db, 'products'),
       (snapshot) => {
-        const deletedIds = getDeletedProductIds();
-        // Atomic incremental diffing using docChanges ensures state consistency
-        snapshot.docChanges().forEach((change) => {
-          const docData = change.doc.data() as Product;
-          if (change.type === 'added' || change.type === 'modified') {
-            if (docData && docData.id && !deletedIds.has(docData.id)) {
-              productsMap.set(docData.id, docData);
-            }
-          } else if (change.type === 'removed') {
-            productsMap.delete(change.doc.id);
+        const docsCount = snapshot.size;
+        const docIds = snapshot.docs.map((d) => d.id);
+        console.log('[SNAPSHOT_RECEIVED]', { docsCount, docIds, fromCache: snapshot.metadata.fromCache });
+
+        const products: Product[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Product;
+          if (data && data.id) {
+            products.push(data);
           }
         });
 
-        // If snapshot is empty, do NOT wipe out existing local products!
-        if (snapshot.empty && productsMap.size > 0) {
-          return;
-        }
+        products.sort((a, b) => {
+          const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+          const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+          return timeB - timeA;
+        });
 
-        // Fallback if map is empty on cold start
-        if (productsMap.size === 0 && !snapshot.empty) {
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data() as Product;
-            if (data && data.id && !deletedIds.has(data.id)) productsMap.set(data.id, data);
-          });
-        }
+        // Always update cache with the true Firestore state
+        try {
+          localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+        } catch (e) {}
 
-        const fsProds = Array.from(productsMap.values());
-        if (fsProds.length > 0 || deletedIds.size > 0) {
-          try {
-            localStorage.setItem(PRODUCTS_KEY, JSON.stringify(fsProds));
-          } catch (e) {}
-          onDataUpdate({ products: fsProds });
-        }
+        onDataUpdate({ products });
       },
       (err) => {
+        console.error('[SNAPSHOT_ERROR]', err);
         handleFirestoreError(err, OperationType.LIST, 'products');
         if (onError) onError(err.message);
       }
@@ -1278,24 +1244,25 @@ export function subscribeToFirestore(
       collection(db, 'orders'),
       (snapshot) => {
         const newlyAddedOrders: Order[] = [];
+        const seenIds = new Set<string>();
 
-        snapshot.docChanges().forEach((change) => {
-          const docData = change.doc.data() as Order;
-          if (change.type === 'added') {
-            if (docData && docData.id) {
-              if (hasInitialOrdersLoaded && !ordersMap.has(docData.id)) {
-                newlyAddedOrders.push(docData);
-              }
-              ordersMap.set(docData.id, docData);
+        snapshot.forEach((docSnap) => {
+          const docData = docSnap.data() as Order;
+          if (docData && docData.id) {
+            seenIds.add(docData.id);
+            if (hasInitialOrdersLoaded && !ordersMap.has(docData.id)) {
+              newlyAddedOrders.push(docData);
             }
-          } else if (change.type === 'modified') {
-            if (docData && docData.id) {
-              ordersMap.set(docData.id, docData);
-            }
-          } else if (change.type === 'removed') {
-            ordersMap.delete(change.doc.id);
+            ordersMap.set(docData.id, docData);
           }
         });
+
+        // Prune any deleted orders
+        for (const existingId of ordersMap.keys()) {
+          if (!seenIds.has(existingId)) {
+            ordersMap.delete(existingId);
+          }
+        }
 
         hasInitialOrdersLoaded = true;
 

@@ -1,5 +1,13 @@
 {
-  "products": [],
+  "products": [
+    {
+      "id": "test-api-save-1788971805685",
+      "title": "عینک تست ای پی آی",
+      "price": 500000,
+      "stock": 3,
+      "updatedAt": "2026-09-09T16:36:45.826Z"
+    }
+  ],
   "orders": [],
   "settings": {
     "storeName": "stock_jahani",
@@ -122,5 +130,6 @@
       "timestamp": "2026-09-03T10:58:55.296Z"
     }
   ],
-  "dataVersion": 1788918694764
+  "deletedProductIds": [],
+  "dataVersion": 1788971805826
 }

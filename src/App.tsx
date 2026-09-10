@@ -87,12 +87,30 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [settings, setSettings] = useState<StoreSettings>(getStoredSettings());
+  const [isLoadingProducts, setIsLoadingProducts] = useState<boolean>(true);
 
   // Cart, Wishlist & Comparison State
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('stock_jahani_cart_v2');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
   const [wishlistIds, setWishlistIds] = useState<string[]>(() => getWishlistIds());
   const [comparedProducts, setComparedProducts] = useState<Product[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
+
+  // Auto-persist cart items across browser sessions & reloads
+  useEffect(() => {
+    try {
+      localStorage.setItem('stock_jahani_cart_v2', JSON.stringify(cartItems));
+    } catch (e) {}
+  }, [cartItems]);
 
   // Modals & Drawers
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -157,6 +175,7 @@ export default function App() {
       if (serverData) {
         if (Array.isArray(serverData.products)) {
           setProducts(serverData.products);
+          setIsLoadingProducts(false);
         }
         if (Array.isArray(serverData.orders)) {
           setOrders(serverData.orders);
@@ -169,6 +188,7 @@ export default function App() {
       console.warn('Sync error:', e);
     } finally {
       isSyncingRef.current = false;
+      setIsLoadingProducts(false);
     }
   };
 
@@ -188,7 +208,10 @@ export default function App() {
     const loadedOrders = getStoredOrders();
     const loadedSettings = getStoredSettings();
 
-    if (loadedProducts.length > 0) setProducts(loadedProducts);
+    if (loadedProducts.length > 0) {
+      setProducts(loadedProducts);
+      setIsLoadingProducts(false);
+    }
     if (loadedOrders.length > 0) setOrders(loadedOrders);
     setSettings(loadedSettings);
 
@@ -197,7 +220,10 @@ export default function App() {
 
     // Live subscription for instant updates across devices
     const unsubscribeSync = subscribeToFirestore(({ products, orders, settings, newOrders }) => {
-      if (Array.isArray(products)) setProducts(products);
+      if (Array.isArray(products)) {
+        setProducts(products);
+        setIsLoadingProducts(false);
+      }
       if (Array.isArray(orders)) setOrders(orders);
       if (settings) setSettings(settings);
 
@@ -345,28 +371,64 @@ export default function App() {
     window.history.replaceState({}, '', url.toString());
   };
 
-  const handleVerifyPasscode = (e: React.FormEvent) => {
+  const handleVerifyPasscode = async (e: React.FormEvent) => {
     e.preventDefault();
     const entered = passcodeInput.trim();
-    const targetPasscode = settings.adminPasscode || '1383';
-    if (entered === targetPasscode) {
-      sessionStorage.setItem('admin_session_auth', 'true');
-      setIsAdminAuthenticated(true);
-      setIsPasscodeModalOpen(false);
-      setProducts((prev) => {
-        if (prev.length === 0) {
-          const stored = getStoredProducts();
-          if (stored.length > 0) return stored;
-        }
-        return prev;
+    if (!entered) {
+      setPasscodeError('لطفاً رمز عبور مدیریت را وارد کنید.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: entered }),
       });
-      setCurrentView('admin');
-      showToast('با موفقیت وارد پنل مدیریت شدید');
-      const url = new URL(window.location.href);
-      url.searchParams.set('view', 'admin');
-      window.history.replaceState({}, '', url.toString());
-    } else {
-      setPasscodeError('رمز عبور وارد شده اشتباه است.');
+      const data = await res.json();
+      if (data.success) {
+        sessionStorage.setItem('admin_session_auth', 'true');
+        setIsAdminAuthenticated(true);
+        setIsPasscodeModalOpen(false);
+        setProducts((prev) => {
+          if (prev.length === 0) {
+            const stored = getStoredProducts();
+            if (stored.length > 0) return stored;
+          }
+          return prev;
+        });
+        setCurrentView('admin');
+        showToast('با موفقیت وارد پنل مدیریت شدید');
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', 'admin');
+        window.history.replaceState({}, '', url.toString());
+        return;
+      } else {
+        setPasscodeError(data.error || 'رمز عبور وارد شده اشتباه است.');
+        return;
+      }
+    } catch (err) {
+      // Offline fallback
+      const targetPasscode = settings.adminPasscode || '1383';
+      if (entered === targetPasscode) {
+        sessionStorage.setItem('admin_session_auth', 'true');
+        setIsAdminAuthenticated(true);
+        setIsPasscodeModalOpen(false);
+        setProducts((prev) => {
+          if (prev.length === 0) {
+            const stored = getStoredProducts();
+            if (stored.length > 0) return stored;
+          }
+          return prev;
+        });
+        setCurrentView('admin');
+        showToast('با موفقیت وارد پنل مدیریت شدید');
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', 'admin');
+        window.history.replaceState({}, '', url.toString());
+      } else {
+        setPasscodeError('رمز عبور وارد شده اشتباه است.');
+      }
     }
   };
 
@@ -468,74 +530,90 @@ export default function App() {
   };
 
   // Admin Product Actions
-  const handleSaveProduct = async (product: Product) => {
+  const handleSaveProduct = async (product: Product): Promise<boolean> => {
     const updatedProd: Product = { 
       ...product, 
       updatedAt: new Date().toISOString() 
     };
-    
-    // Immediate UI update
-    setProducts((prev) => {
-      const index = prev.findIndex((p) => p.id === product.id);
-      let updated: Product[];
-      if (index >= 0) {
-        updated = [...prev];
-        updated[index] = updatedProd;
-      } else {
-        updated = [updatedProd, ...prev];
-      }
-      return updated;
+
+    console.log('[PRODUCT_CREATE_START]', {
+      id: updatedProd.id,
+      title: updatedProd.title,
+      price: updatedProd.price,
+      stock: updatedProd.stock,
+      category: updatedProd.category,
     });
 
-    // Atomic sync across LocalStorage, Express server, and Firestore
-    await saveSingleProduct(updatedProd);
+    try {
+      // 1. Strict await for Firestore write before state update (eliminating destructive optimistic updates)
+      const saveSuccess = await saveSingleProduct(updatedProd);
+      if (!saveSuccess) {
+        throw new Error('عدم دریافت تأییدیه ذخیره‌سازی از دیتابیس ابری');
+      }
+
+      // 2. State update ONLY after database write succeeds
+      setProducts((prev) => {
+        const index = prev.findIndex((p) => p.id === updatedProd.id);
+        let updated: Product[];
+        if (index >= 0) {
+          updated = [...prev];
+          updated[index] = updatedProd;
+        } else {
+          updated = [updatedProd, ...prev];
+        }
+        return updated;
+      });
+
+      console.log('[STATE_UPDATE_SUCCESS]', updatedProd.id);
+      return true;
+    } catch (err: any) {
+      console.error('[PRODUCT_CREATE_ERROR]', err);
+      showToast(`خطا در ثبت عینک در دیتابیس: ${err?.message || 'مشکل در ارتباط با سرور'}`);
+      return false;
+    }
   };
 
-  const handleDeleteProduct = async (productId: string) => {
-    deleteProductFromFirestore(productId);
-    fetch(`/api/products/${productId}`, { method: 'DELETE' }).catch(() => {});
-    setProducts((prev) => {
-      const updated = prev.filter((p) => p.id !== productId);
-      saveStoredProducts(updated);
-      return updated;
-    });
-    showToast('عینک با موفقیت از سیستم حذف شد');
+  const handleDeleteProduct = async (productId: string): Promise<boolean> => {
+    try {
+      await deleteProductFromFirestore(productId);
+      setProducts((prev) => prev.filter((p) => p.id !== productId));
+      showToast('عینک با موفقیت از سیستم و دیتابیس حذف شد');
+      return true;
+    } catch (err: any) {
+      console.error('[PRODUCT_DELETE_ERROR]', err);
+      showToast(`خطا در حذف عینک: ${err?.message || 'مشکل ارتباطی'}`);
+      return false;
+    }
   };
 
   const handleLoadDemoProducts = async () => {
     const demos = await loadDemoProductsRemote();
     setProducts(demos);
-    showToast('عینک‌های نمونه با موفقیت بارگذاری شدند');
+    showToast('عینک‌های نمونه با موفقیت در فایراستور بارگذاری شدند');
   };
 
   const handleClearAllProducts = async () => {
-    setProducts([]);
     await clearAllProductsRemote();
-    showToast('تمامی عینک‌های فرضی با موفقیت پاک شدند. اکنون می‌توانید عینک‌های واقعی خود را ثبت کنید.');
+    setProducts([]);
+    showToast('تمامی عینک‌ها از فایراستور و سیستم پاک شدند. اکنون می‌توانید عینک‌های واقعی خود را ثبت کنید.');
   };
 
   // Order Actions & Automatic Stock Management
   const handleOrderCreated = (newOrder: Order) => {
-    // 1. Deduct quantity from product stock
-    setProducts((prevProducts) => {
-      const updatedProducts = prevProducts.map((p) => {
+    // 1. Locally reflect deducted quantity from product stock
+    setProducts((prevProducts) =>
+      prevProducts.map((p) => {
         const itemInOrder = newOrder.items.find((item) => item.product.id === p.id);
         if (itemInOrder) {
           const newStock = Math.max(0, p.stock - itemInOrder.quantity);
           return { ...p, stock: newStock, updatedAt: new Date().toISOString() };
         }
         return p;
-      });
-      saveStoredProducts(updatedProducts);
-      return updatedProducts;
-    });
+      })
+    );
 
-    // 2. Add to orders
-    setOrders((prev) => {
-      const updated = [newOrder, ...prev];
-      saveStoredOrders(updated);
-      return updated;
-    });
+    // 2. Locally reflect newly created order
+    setOrders((prev) => [newOrder, ...prev.filter((o) => o.id !== newOrder.id)]);
 
     // 3. Clear cart after order creation
     setCartItems([]);
@@ -786,7 +864,13 @@ export default function App() {
                 </div>
 
                 {/* Products Grid / Empty States */}
-                {products.length === 0 ? (
+                {isLoadingProducts ? (
+                  <div className="py-24 flex flex-col items-center justify-center space-y-4 text-center">
+                    <div className="w-12 h-12 border-3 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+                    <p className="text-sm text-zinc-300 font-bold">در حال دریافت و همگام‌سازی عینک‌ها از پایگاه داده ابری...</p>
+                    <p className="text-xs text-zinc-500">لطفاً چند لحظه شکیبا باشید</p>
+                  </div>
+                ) : products.length === 0 ? (
                   <div className="bg-zinc-900/40 border-2 border-dashed border-amber-500/30 rounded-3xl p-10 text-center space-y-4 my-8 text-right dir-rtl">
                     <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
                       <Glasses className="w-8 h-8 stroke-[1.5]" />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CartItem, Order, OrderCustomer, StoreSettings } from '../types';
 import { formatToman, generateOrderCode, fileToBase64, saveSingleOrder, DEFAULT_COUPONS, sendNtfyOrderAlert, checkProductStock, sendTelegramOrderNotification } from '../utils/storage';
 import { sound } from '../utils/audio';
@@ -107,6 +107,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [receiptImage, setReceiptImage] = useState<string>('');
   const [transactionCodeInput, setTransactionCodeInput] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [copiedSheba, setCopiedSheba] = useState(false);
   const [copiedAccountNum, setCopiedAccountNum] = useState(false);
@@ -182,9 +183,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (isSubmitting) return;
+    if (isSubmitting || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     if (items.length === 0) {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       setErrorMessage('سبد خرید شما خالی است یا عینک‌های انتخابی شما تمام شده‌اند.');
       return;
     }
@@ -208,6 +213,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       !customer.address.trim() || 
       !cleanPostal
     ) {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       setErrorMessage('لطفاً نام، شماره تماس، آدرس دقیق و کد پستی ۱۰ رقمی را وارد کنید.');
       return;
     }
@@ -217,11 +224,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       cleanPhone.length > 11 || 
       (!cleanPhone.startsWith('09') && !cleanPhone.startsWith('9'))
     ) {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       setErrorMessage('لطفاً یک شماره موبایل معتبر ایران (مثال: ۰۹۱۲۳۴۵۶۷۸۹) وارد فرمایید.');
       return;
     }
 
     if (cleanPostal.length < 10) {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       setErrorMessage('کد پستی وارد شده معتبر نیست. لطفاً کد پستی ۱۰ رقمی پستی را کامل وارد نمایید.');
       return;
     }
@@ -234,11 +245,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     };
 
     if (paymentMethod === 'card_to_card' && !receiptImage) {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       setErrorMessage('لطفاً ابتدا تصویر فیش یا رسید واریزی کارت به کارت را آپلود کنید تا ثبت سفارش مجاز شود.');
       return;
     }
 
-    setIsSubmitting(true);
     setErrorMessage('');
 
     // ۱. بررسی موجودی محصولات قبل از ثبت نهایی (سریع و موازی)
@@ -257,6 +269,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       const outOfStockItem = stockChecks.find(Boolean);
       if (outOfStockItem) {
         setErrorMessage(`متأسفانه محصول "${outOfStockItem}" تمام شده یا به این تعداد موجود نیست.`);
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
         return;
       }
@@ -313,11 +326,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     };
 
     try {
-      const isSaved = await saveSingleOrder(newOrder);
+      const saveResult = await saveSingleOrder(newOrder);
 
-      if (!isSaved) {
+      if (!saveResult.success) {
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
-        setErrorMessage('خطا در ثبت سفارش در سرور! اطلاعات ذخیره نشد، لطفاً اتصال اینترنت خود را چک کرده و مجدداً روی دکمه ثبت بزنید.');
+        setErrorMessage(saveResult.error || 'خطا در ثبت سفارش در سرور! اطلاعات ذخیره نشد، لطفاً اتصال اینترنت خود را چک کرده و مجدداً روی دکمه ثبت بزنید.');
         return;
       }
 
@@ -325,13 +339,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       sendNtfyOrderAlert(newOrder);
       sendTelegramOrderNotification(newOrder, settings);
       setCreatedOrder(newOrder);
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
       sound.playSuccess();
       triggerLuxuryConfetti();
       setStep('success');
-    } catch (err) {
+    } catch (err: any) {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
-      setErrorMessage('خطا در ارتباط با سرور. ثبت سفارش انجام نشد، لطفاً دوباره تلاش فرمایید.');
+      setErrorMessage(err?.message || 'خطا در ارتباط با سرور. ثبت سفارش انجام نشد، لطفاً دوباره تلاش فرمایید.');
     }
   };
 

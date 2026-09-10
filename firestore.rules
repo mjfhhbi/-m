@@ -1,29 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Products: public can read, anyone can manage
+
+    // Helper validation functions
+    function isValidProduct(data) {
+      return data.title is string && data.title.size() > 0
+        && data.price is number && data.price >= 0
+        && data.stock is number && data.stock >= 0;
+    }
+
+    function isValidOrder(data) {
+      return data.orderCode is string && data.orderCode.size() > 0
+        && data.finalAmount is number && data.finalAmount >= 0
+        && data.items is list && data.items.size() > 0
+        && data.customer is map
+        && data.customer.fullName is string && data.customer.fullName.size() > 0
+        && data.customer.phone is string && data.customer.phone.size() >= 10;
+    }
+
+    // Products: public can read; writes validated for integrity
     match /products/{productId} {
+      allow read: if true;
+      allow create, update: if isValidProduct(request.resource.data);
+      allow delete: if true;
+    }
+
+    // Orders: public can create orders and track them; updates validated
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create: if isValidOrder(request.resource.data);
+      allow update: if request.resource.data.orderCode == resource.data.orderCode;
+      allow delete: if true;
+    }
+
+    // Settings: public can read store settings; writes allowed for store configuration
+    match /settings/{settingId} {
       allow read: if true;
       allow write: if true;
     }
-    // Orders: public can create new orders and track them
-    match /orders/{orderId} {
-      allow read, create, update, delete: if true;
-    }
-    // Settings: public can read settings, write permitted
-    match /settings/{settingId} {
-      allow read, write: if true;
-    }
-    // Analytics and visitors
-    match /analytics/{docId} {
-      allow read, write: if true;
-    }
-    // Audit Logs: readable and writable for logging mutations
+
+    // Audit logs:
     match /audit_logs/{logId} {
       allow read, write: if true;
     }
-    match /{document=**} {
+
+    // Live analytics and visitor counters
+    match /analytics/{docId} {
       allow read, write: if true;
+    }
+
+    // Admin secrets: strictly forbidden from direct client queries
+    match /admin_secrets/{docId} {
+      allow read, write: if false;
     }
   }
 }

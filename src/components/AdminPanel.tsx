@@ -76,7 +76,8 @@ import {
   FileText,
   Mail,
   RotateCcw,
-  History
+  History,
+  Loader2
 } from 'lucide-react';
 
 import {
@@ -102,7 +103,7 @@ interface AdminPanelProps {
   products: Product[];
   orders: Order[];
   settings: StoreSettings;
-  onSaveProduct: (product: Product) => void;
+  onSaveProduct: (product: Product) => Promise<boolean | void> | void;
   onDeleteProduct: (id: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, postalTrackingCode?: string, adminNote?: string) => void;
   onDeleteOrder?: (orderId: string) => void;
@@ -341,6 +342,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Add / Edit Product Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
 
@@ -703,7 +705,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleSaveProductSubmit = (e: React.FormEvent) => {
+  const handleSaveProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim()) {
       onShowToast('لطفاً عنوان عینک را وارد کنید');
@@ -757,9 +759,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    onSaveProduct(productData);
-    setIsModalOpen(false);
-    onShowToast(editingProduct ? 'عینک با موفقیت ویرایش و ذخیره شد' : 'عینک جدید با موفقیت به ویترین اضافه شد');
+    setIsSavingProduct(true);
+    try {
+      const result = await onSaveProduct(productData);
+      if (result !== false) {
+        setIsModalOpen(false);
+        onShowToast(editingProduct ? 'عینک با موفقیت در دیتابیس ابری فایراستور ذخیره و ویرایش شد' : 'عینک با موفقیت در دیتابیس ابری فایراستور ثبت شد');
+      }
+    } catch (err: any) {
+      console.error('[PRODUCT_CREATE_ERROR]', err);
+      onShowToast(`خطا در ثبت عینک در دیتابیس: ${err?.message || 'مشکل اتصال'}`);
+    } finally {
+      setIsSavingProduct(false);
+    }
   };
 
   const copyUrl = (type: 'store' | 'admin') => {
@@ -4360,17 +4372,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="pt-2 sticky bottom-0 bg-zinc-900/95 backdrop-blur-md border-t border-zinc-800 flex items-center justify-end gap-2 pb-1">
                   <button
                     type="button"
+                    disabled={isSavingProduct}
                     onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                    className="px-4 py-2.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors"
                   >
                     انصراف
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 sm:flex-none sm:min-w-[200px] bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 px-6 rounded-xl text-xs shadow-lg transition-colors flex items-center justify-center gap-2"
+                    disabled={isSavingProduct}
+                    className="flex-1 sm:flex-none sm:min-w-[200px] bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-bold py-2.5 px-6 rounded-xl text-xs shadow-lg transition-colors flex items-center justify-center gap-2"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>{editingProduct ? 'ذخیره تغییرات عینک' : 'ذخیره و انتشار عینک در ویترین'}</span>
+                    {isSavingProduct ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>در حال ذخیره در دیتابیس ابری فایراستور...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>{editingProduct ? 'ذخیره تغییرات عینک' : 'ذخیره و انتشار عینک در ویترین'}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
