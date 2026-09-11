@@ -75,16 +75,21 @@ export const CustomerOrderTrackerModal: React.FC<CustomerOrderTrackerModalProps>
       if (savedPhone) {
         setActivePhone(savedPhone);
         setSearchInput(savedPhone);
-      }
-      // Re-fetch latest from server and local storage immediately
-      setIsLoadingOrders(true);
-      fetchServerData()
-        .then((res) => {
-          if (res && Array.isArray(res.orders)) {
-            setLiveOrders(res.orders);
-          }
+        setIsLoadingOrders(true);
+        fetch('/api/orders/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: savedPhone, phone: savedPhone }),
         })
-        .finally(() => setIsLoadingOrders(false));
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && Array.isArray(data.orders)) {
+              setLiveOrders(data.orders);
+            }
+          })
+          .catch(() => {})
+          .finally(() => setIsLoadingOrders(false));
+      }
     }
   }, [isOpen]);
 
@@ -110,19 +115,25 @@ export const CustomerOrderTrackerModal: React.FC<CustomerOrderTrackerModalProps>
 
     setIsLoadingOrders(true);
     try {
-      const freshData = await fetchServerData();
-      if (freshData && Array.isArray(freshData.orders)) {
-        setLiveOrders(freshData.orders);
+      const res = await fetch('/api/orders/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, phone: query }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.orders)) {
+        setLiveOrders(data.orders);
+        setErrorMsg('');
+        setActivePhone(query);
+        localStorage.setItem('customer_tracker_phone', query);
+      } else {
+        setErrorMsg(data.error || 'سفارشی با این مشخصات یافت نشد یا دسترسی مجاز نیست.');
       }
     } catch (e) {
-      console.warn(e);
+      setErrorMsg('خطا در برقراری ارتباط با سرور رهگیری.');
     } finally {
       setIsLoadingOrders(false);
     }
-
-    setErrorMsg('');
-    setActivePhone(query);
-    localStorage.setItem('customer_tracker_phone', query);
   };
 
   const handleLogoutPhone = () => {

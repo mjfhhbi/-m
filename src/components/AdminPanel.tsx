@@ -2646,31 +2646,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
               <span>🤖</span> تنظیمات ربات تلگرام (ارسال لحظه‌ای سفارشات و فیش واریزی)
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">توکن ربات تلگرام (Bot Token)</label>
-                <input
-                  type="text"
-                  value={tempSettings.telegramBotToken || ''}
-                  onChange={(e) => setTempSettings({ ...tempSettings, telegramBotToken: e.target.value })}
-                  placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-emerald-400 font-mono dir-ltr text-right"
-                />
+            <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between text-xs text-zinc-300">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  امنیت اتصال تلگرام: مدیریت محرمانه از طریق متغیرهای محیطی سرور (<code className="text-amber-400 font-mono text-[11px]">TELEGRAM_BOT_TOKEN</code> و <code className="text-amber-400 font-mono text-[11px]">TELEGRAM_CHAT_ID</code>)
+                </span>
+                <span className="text-[11px] text-zinc-400">بدون افشای توکن در کلاینت یا دیتابیس عمومی</span>
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">چت آیدی گروه/کانال تلگرام (Chat ID)</label>
-                <input
-                  type="text"
-                  value={tempSettings.telegramChatId || ''}
-                  onChange={(e) => setTempSettings({ ...tempSettings, telegramChatId: e.target.value })}
-                  placeholder="-1001234567890"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-emerald-400 font-mono dir-ltr text-right"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">آدرس وب‌هوک / Cloudflare Worker (اختیاری)</label>
+              <div className="pt-1">
+                <label className="block text-xs font-medium text-zinc-300 mb-1">آدرس پروکسی وب‌هوک / Cloudflare Worker (اختیاری جهت بای‌پاس فیلترینگ تلگرام)</label>
                 <input
                   type="text"
                   value={tempSettings.telegramWebhookUrl || ''}
@@ -2865,22 +2850,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
-          {/* Admin Security Passcode Section */}
-          <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
+          {/* Admin Security Section */}
+          <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-2">
             <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-              <Settings className="w-4 h-4 text-amber-400" />
-              <span>رمز عبور اختصاصی پنل مدیریت</span>
+              <Settings className="w-4 h-4 text-emerald-400" />
+              <span>امنیت و احراز هویت پنل مدیریت</span>
             </h4>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">رمز عبور ورود به پنل مدیریت (پیش‌فرض: 1383)</label>
-              <input
-                type="text"
-                value={tempSettings.adminPasscode || '1383'}
-                onChange={(e) => setTempSettings({ ...tempSettings, adminPasscode: e.target.value })}
-                placeholder="1383"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono dir-ltr text-right"
-              />
-            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              رمز عبور ورود به پنل مدیریت مستقیماً از طریق متغیر محیطی <code className="text-amber-400 bg-zinc-900 px-1.5 py-0.5 rounded font-mono text-[11px]">ADMIN_PASSCODE</code> روی سرور محافظت و تایید اعتبار می‌شود و به دلایل امنیتی در تنظیمات عمومی یا کلاینت ذخیره نمی‌گردد.
+            </p>
           </div>
 
           {/* Backup & Data Export / Restore Section */}

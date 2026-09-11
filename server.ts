@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -23,9 +24,6 @@ app.use((req, res, next) => {
 // Support large payloads (for base64 product images)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "store.json");
 
 const DEFAULT_SETTINGS = {
   storeName: "stock_jahani",
@@ -60,7 +58,6 @@ const DEFAULT_SETTINGS = {
   phone: "09120000000",
   address: "تهران، خیابان ولیعصر، مرکز خرید عینک استوک جهانی",
   freeShippingThreshold: 0,
-  adminPasscode: "1383",
   cardNumber: "6037-9975-1234-5678",
   cardHolderName: "بهنام جهانی",
   ntfyEnabled: true,
@@ -69,21 +66,6 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_PRODUCTS: any[] = [];
-
-function getWritableDataFilePath(): string {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    const testFile = path.join(DATA_DIR, ".write_test");
-    fs.writeFileSync(testFile, "test");
-    fs.unlinkSync(testFile);
-    return DATA_FILE;
-  } catch (e) {
-    // Fallback to OS tmp folder if project directory is read-only
-    return path.join(require("os").tmpdir(), "stock_jahani_store.json");
-  }
-}
 
 const DEFAULT_ANALYTICS = {
   totalViews: 0,
@@ -95,181 +77,6 @@ const DEFAULT_ANALYTICS = {
   recentVisits: [] as any[],
 };
 
-const INITIAL_SERVER_PRODUCTS = [
-  {
-    id: 'stk-rb3025-aviator',
-    title: 'عینک آفتابی خلبانی ری‌بن Aviator طلایی استوک اورجینال',
-    code: 'STK-RB3025',
-    category: 'sunglasses',
-    price: 1850000,
-    originalPrice: 2400000,
-    frameType: 'فلزی آبکاری طلا ۲۴ عیار',
-    lensColor: 'دودی سبز G-15 ضد انعکاس',
-    uvProtection: 'استاندارد UV400 پولاریزه',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'عینک خلبانی نمادین ری‌بن استوک وارداتی سفارش اروپا. فریم طلایی مقاوم با دسته‌های ارگونومیک، عدسی شیشه‌ای G-15 با فیلتر کامل اشعه فرابنفش، مناسب رانندگی و استفاده روزمره.',
-    features: ['عدسی شیشه‌ای ضدخش کریستال', 'فیلتر کامل UV400 و پولاریزه', 'پدهای بینی سیلیکونی نرم ضد حساسیت', 'جعبه و دستمال نانو اورجینال'],
-    stock: 4,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'stk-rb2140-wayfarer',
-    title: 'عینک ویفرر کلاسیک مشکی مات Wayfarer ایتالیا',
-    code: 'STK-RB2140',
-    category: 'sunglasses',
-    price: 1680000,
-    originalPrice: 2100000,
-    frameType: 'کائوچو استات دست‌ساز ایتالیا',
-    lensColor: 'مشکی دودی گرادینت UV400',
-    uvProtection: 'استاندارد UV400 محافظ کامل',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'مدل افسانه‌ای ویفرر با بدنه استات مشکی مات فوق‌العاده باکیفیت. لولاهای ۷ پین فلزی ضد شکستگی و عدسی‌های فیلترکننده نورهای مزاحم محیطی.',
-    features: ['بدنه کائوچویی فوق‌العاده مقاوم', 'لولاهای فولادی ضدزنگ ۷ خار', 'طراحی رترو و وینتیج ماندگار', 'مناسب تمام فرم‌های صورت'],
-    stock: 5,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'stk-rb3016-clubmaster',
-    title: 'عینک کلاب‌مستر کلاسیک Clubmaster مشکی و طلایی',
-    code: 'STK-RB3016',
-    category: 'sunglasses',
-    price: 1920000,
-    originalPrice: 2500000,
-    frameType: 'ترکیب استات استوک و آلیاژ برنجی',
-    lensColor: 'قهوه‌ای هایلایت UV400',
-    uvProtection: 'UV400 + Polarized',
-    gender: 'مردانه',
-    images: [
-      'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'طراحی نیم‌فریم ابرویی بی‌نظیر کلاب‌مستر با جزییات طلایی چشم‌نواز. انتخابی اصیل برای استایل‌های کلاسیک و رسمی مردانه.',
-    features: ['فریم نیمه نیم‌کائوچویی با زهوار طلایی', 'عدسی محافظت کامل در برابر بازتاب نور', 'حک لیزری برند روی عدسی', 'قاب چرمی محافظ'],
-    stock: 3,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'opt-vintage-round-501',
-    title: 'فریم طبی گرد وینتیج Vintage Round ترند روز',
-    code: 'OPT-VR501',
-    category: 'optical',
-    price: 1290000,
-    originalPrice: 1600000,
-    frameType: 'تیتانیوم سبک ضد حساسیت',
-    lensColor: 'بلوکات آنتی رفلکس (شفاف)',
-    uvProtection: 'محافظ نور آبی مانیتور (Blue Control)',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'فریم طبی بسیار سبک و خوش‌ساخت برای استفاده پشت سیستم و مطالعه طولانی. قابلیت تعویض عدسی با نمره چشم شما در هر بینایی‌سنجی.',
-    features: ['وزن بسیار کم کمتر از ۱۶ گرم', 'جلوگیری از خستگی چشم پشت کامپیوتر', 'آلیاژ تیتانیوم انعطاف‌پذیر', 'قابلیت نصب تمام نمرات طبی'],
-    stock: 6,
-    isFeatured: false,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'stk-cartier-panthere',
-    title: 'عینک آفتابی لوکس کارتیه مدل پانتر نگین‌دار استوک',
-    code: 'STK-CT908',
-    category: 'luxury',
-    price: 2450000,
-    originalPrice: 3200000,
-    frameType: 'تمام فلزی آبکاری رودیوم نگین‌دار',
-    lensColor: 'شیب‌رنگ بنفش دودی الماسه',
-    uvProtection: 'استاندارد UV400 کامل',
-    gender: 'زنانه',
-    images: [
-      'https://images.unsplash.com/photo-1577803645773-f96470509666?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'عینک بدون فریم لوکس کارتیه با دسته‌های تراش‌خورده و ظرافت شاهکار. مناسب مهمانی‌ها، مجالس و استایل‌های خاص زنانه.',
-    features: ['عدسی‌های تراش‌خورده الماسه چندضلعی', 'بدنه لوکس بدون تغییر رنگ', 'حک شماره سریال کارتیه روی بازو', 'جعبه هاردکیس مخملی کارتیه'],
-    stock: 2,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'opt-tomford-acetate',
-    title: 'فریم طبی مستطیلی کائوچویی تام فورد Tom Ford',
-    code: 'OPT-TF540',
-    category: 'optical',
-    price: 1750000,
-    originalPrice: 2200000,
-    frameType: 'استات کائوچویی چندلایه مات',
-    lensColor: 'عدسی دموی شفاف قابل تعویض',
-    uvProtection: 'UV400 بلوکات',
-    gender: 'مردانه',
-    images: [
-      'https://images.unsplash.com/photo-1577803645773-f96470509666?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'فریم طبی مستطیلی با نشان فلزی معروف T شکل تام فورد روی لولاها. طراحی شیک و باوقار، مناسب استایل مدیران و محیط‌های اداری.',
-    features: ['طراحی انحصاری T Logo تام فورد', 'پوشش مات ضد لک و ضد تعریق', 'مناسب برای نمرات ضعیف و آستیگمات', 'استقامت بسیار بالای بدنه'],
-    stock: 3,
-    isFeatured: false,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'spt-oakley-sportshield',
-    title: 'عینک ورزشی و دوچرخه‌سواری ضد ضربه اوکلی',
-    code: 'SPT-OK800',
-    category: 'sport',
-    price: 1420000,
-    originalPrice: 1800000,
-    frameType: 'پلیمر فشرده TR90 نشکن و منعطف',
-    lensColor: 'جیوه‌ای هفت‌رنگ ضد بخار',
-    uvProtection: 'UV400 + Polarized ورزش حرفه‌ای',
-    gender: 'اسپرت (یونی‌سکس)',
-    images: [
-      'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'عینک مخصوص دویدن، کوهنوردی، دوچرخه‌سواری و اسکی با پوشش پانورامای کامل چشم. دارای منافذ هدایت باد جهت جلوگیری از بخار گرفتگی عدسی.',
-    features: ['مقاومت بالا در برابر ضربه و سقوط', 'دید سراسری و بدون مانع میدان دید', 'روکش آب‌گریز نانو روی عدسی', 'بند مهار ورزشی ضمیمه'],
-    stock: 4,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'stk-chanel-cateye',
-    title: 'عینک آفتابی زنانه گربه‌ای استوک شنل Chanel',
-    code: 'STK-CH302',
-    category: 'sunglasses',
-    price: 2150000,
-    originalPrice: 2800000,
-    frameType: 'کائوچویی براق مشکی پیانو',
-    lensColor: 'دودی سایه‌روشن UV400',
-    uvProtection: 'استاندارد UV400 محافظ کامل چشم',
-    gender: 'زنانه',
-    images: [
-      'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=800&auto=format&fit=crop&q=80'
-    ],
-    description: 'فریم چشم‌گربه‌ای زنانه برند شنل با لوگوی نقره‌ای CC برجسته روی دسته‌ها. طراحی خیره‌کننده که فرم صورت را کشیده و جذاب‌تر نشان می‌دهد.',
-    features: ['فریم صیقلی پیانویی بدون خط و خش', 'عدسی محافظ در برابر اشعه‌های UVA و UVB', 'ارگونومی استاندارد زنانه', 'دستمال ابریشمی و جلد اختصاصی'],
-    stock: 3,
-    isFeatured: true,
-    createdAt: new Date().toISOString()
-  }
-];
-
-let inMemoryStore: { 
-  products: any[]; 
-  orders: any[]; 
-  settings: any; 
-  analytics?: any; 
-  auditLogs?: any[]; 
-  deletedProductIds?: string[];
-  dataVersion?: number; 
-} | null = null;
 const liveSessions = new Map<string, { lastSeen: number; page: string; device: string; ip?: string }>();
 const todayVisitorSet = new Set<string>();
 
@@ -387,33 +194,54 @@ async function logAuditTrail(entry: {
   return auditDoc;
 }
 
-function readData() {
-  if (inMemoryStore) {
-    return inMemoryStore;
-  }
-  const filePath = getWritableDataFilePath();
+async function fetchProductsFromFirestore(): Promise<any[]> {
   try {
-    if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, "utf-8");
-      const parsed = JSON.parse(content);
-      const prods = Array.isArray(parsed.products)
-        ? parsed.products 
-        : [];
-      inMemoryStore = {
-        products: prods,
-        orders: Array.isArray(parsed.orders) ? parsed.orders : [],
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
-        analytics: { ...DEFAULT_ANALYTICS, ...(parsed.analytics || {}) },
-        auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
-        deletedProductIds: Array.isArray(parsed.deletedProductIds) ? parsed.deletedProductIds : [],
-      };
-      return inMemoryStore;
-    }
-  } catch (err) {
-    console.error("Error reading store file:", err);
+    const cfg = getFirebaseConfig();
+    const projectId = cfg.projectId;
+    const dbId = cfg.firestoreDatabaseId || '(default)';
+    const apiKey = cfg.apiKey;
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/products?key=${apiKey}&pageSize=300`;
+    const res = await fetchWithRetry(url, { method: 'GET' }, 2, 500);
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (!json.documents) return [];
+    return json.documents.map((d: any) => {
+      const fields = d.fields || {};
+      const obj: any = {};
+      for (const [k, v] of Object.entries(fields)) {
+        const valObj = v as any;
+        if (valObj.stringValue !== undefined) obj[k] = valObj.stringValue;
+        else if (valObj.integerValue !== undefined) obj[k] = parseInt(valObj.integerValue, 10);
+        else if (valObj.doubleValue !== undefined) obj[k] = valObj.doubleValue;
+        else if (valObj.booleanValue !== undefined) obj[k] = valObj.booleanValue;
+        else if (valObj.arrayValue && valObj.arrayValue.values) {
+          obj[k] = valObj.arrayValue.values.map((x: any) => x.stringValue ?? x.doubleValue ?? x);
+        }
+      }
+      const id = d.name.split('/').pop();
+      return { id, ...obj };
+    });
+  } catch (e) {
+    console.error('Error fetching products from Firestore in server:', e);
+    return [];
   }
-  inMemoryStore = { products: [], orders: [], settings: DEFAULT_SETTINGS, analytics: DEFAULT_ANALYTICS, auditLogs: [], deletedProductIds: [] };
-  return inMemoryStore;
+}
+
+let inMemoryAnalytics = {
+  ...DEFAULT_ANALYTICS,
+};
+let inMemoryAuditLogs: any[] = [];
+let inMemoryOrders: any[] = [];
+
+function readData() {
+  return {
+    products: [],
+    orders: inMemoryOrders,
+    settings: DEFAULT_SETTINGS,
+    analytics: inMemoryAnalytics,
+    auditLogs: inMemoryAuditLogs,
+    dataVersion: Date.now(),
+  };
 }
 
 const sseClients: Set<express.Response> = new Set();
@@ -430,100 +258,10 @@ function notifySseClients(data: any) {
 }
 
 function writeData(data: any) {
-  data.dataVersion = Date.now();
-  inMemoryStore = data;
-  notifySseClients({ type: "DATA_UPDATED", version: data.dataVersion });
-  const filePath = getWritableDataFilePath();
-  try {
-    const parentDir = path.dirname(filePath);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
-    }
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Error writing store file:", err);
-  }
-}
-
-function getTimestamp(item: any): number {
-  if (!item) return 0;
-  const t = item.updatedAt || item.createdAt;
-  if (!t) return 0;
-  const parsed = new Date(t).getTime();
-  return isNaN(parsed) ? 0 : parsed;
-}
-
-function mergeProducts(p1: any, p2: any): any {
-  const t1 = getTimestamp(p1);
-  const t2 = getTimestamp(p2);
-  if (t2 > t1) {
-    return { ...p1, ...p2 };
-  } else if (t1 > t2) {
-    return { ...p2, ...p1 };
-  } else {
-    if (p2.updatedAt && !p1.updatedAt) return { ...p1, ...p2 };
-    return { ...p1, ...p2 };
-  }
-}
-
-function mergeProductsLists(list1: any[], list2: any[]): any[] {
-  const map = new Map<string, any>();
-  for (const p of list1) {
-    if (p && p.id) map.set(p.id, p);
-  }
-  for (const p of list2) {
-    if (p && p.id) {
-      const existing = map.get(p.id);
-      if (!existing) {
-        map.set(p.id, p);
-      } else {
-        map.set(p.id, mergeProducts(existing, p));
-      }
-    }
-  }
-  return Array.from(map.values());
-}
-
-function mergeOrders(o1: any, o2: any): any {
-  const t1 = getTimestamp(o1);
-  const t2 = getTimestamp(o2);
-  let base: any;
-  if (t2 > t1) {
-    base = { ...o1, ...o2 };
-  } else if (t1 > t2) {
-    base = { ...o2, ...o1 };
-  } else {
-    base = { ...o1, ...o2 };
-  }
-  return {
-    ...base,
-    status: o2.status && o2.status !== 'pending' ? o2.status : (o1.status && o1.status !== 'pending' ? o1.status : base.status),
-    postalTrackingCode: o2.postalTrackingCode || o1.postalTrackingCode || base.postalTrackingCode,
-    adminNote: o2.adminNote !== undefined ? o2.adminNote : (o1.adminNote !== undefined ? o1.adminNote : base.adminNote),
-    paymentReceipt: o2.paymentReceipt || o1.paymentReceipt || base.paymentReceipt,
-    paymentRefId: o2.paymentRefId || o1.paymentRefId || base.paymentRefId,
-    isPaid: o2.isPaid || o1.isPaid || base.isPaid,
-  };
-}
-
-function mergeOrdersLists(list1: any[], list2: any[]): any[] {
-  const map = new Map<string, any>();
-  for (const o of list1) {
-    if (o && o.id) map.set(o.id, o);
-  }
-  for (const o of list2) {
-    if (o && o.id) {
-      const existing = map.get(o.id);
-      if (!existing) {
-        map.set(o.id, o);
-      } else {
-        map.set(o.id, mergeOrders(existing, o));
-      }
-    }
-  }
-  return Array.from(map.values()).sort((a, b) =>
-    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-  );
+  if (data && Array.isArray(data.orders)) inMemoryOrders = data.orders;
+  if (data && data.analytics) inMemoryAnalytics = data.analytics;
+  if (data && data.auditLogs) inMemoryAuditLogs = data.auditLogs;
+  notifySseClients({ type: "DATA_UPDATED", version: Date.now() });
 }
 
 // API Endpoints
@@ -569,10 +307,9 @@ app.get("/api/events", (req, res) => {
   });
 });
 
-app.get("/sitemap.xml", (req, res) => {
+app.get("/sitemap.xml", async (req, res) => {
   res.setHeader("Content-Type", "application/xml");
-  const data = readData();
-  const products = data.products || [];
+  const products = await fetchProductsFromFirestore();
   const domain = `${req.protocol}://${req.get("host")}`;
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -594,20 +331,15 @@ app.get("/sitemap.xml", (req, res) => {
 
 app.get("/robots.txt", (req, res) => {
   res.setHeader("Content-Type", "text/plain");
-  const data = readData();
-  const customRobots = data.settings?.robotsTxtContent;
-  if (customRobots && customRobots.trim()) {
-    return res.send(customRobots);
-  }
   const domain = `${req.protocol}://${req.get("host")}`;
   res.send(`User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${domain}/sitemap.xml`);
 });
 
-app.get("/api/feed/torob", (req, res) => {
+app.get("/api/feed/torob", async (req, res) => {
   res.setHeader("Content-Type", "application/json");
-  const data = readData();
+  const productsList = await fetchProductsFromFirestore();
   const domain = `${req.protocol}://${req.get("host")}`;
-  const products = (data.products || []).map((p: any) => ({
+  const products = productsList.map((p: any) => ({
     page_unique_code: p.id,
     title: p.title,
     subtitle: p.code ? `کد: ${p.code}` : '',
@@ -621,11 +353,11 @@ app.get("/api/feed/torob", (req, res) => {
   res.json({ products });
 });
 
-app.get("/api/feed/emalls", (req, res) => {
+app.get("/api/feed/emalls", async (req, res) => {
   res.setHeader("Content-Type", "application/json");
-  const data = readData();
+  const productsList = await fetchProductsFromFirestore();
   const domain = `${req.protocol}://${req.get("host")}`;
-  const products = (data.products || []).map((p: any) => ({
+  const products = productsList.map((p: any) => ({
     id: p.id,
     title: p.title,
     price: p.price,
@@ -639,221 +371,194 @@ app.get("/api/feed/emalls", (req, res) => {
 });
 
 app.get("/api/version", (req, res) => {
-  const data = readData();
   res.json({
-    version: data.dataVersion || 1,
-    productsCount: (data.products || []).length,
-    ordersCount: (data.orders || []).length,
+    version: Date.now(),
+    sourceOfTruth: "firestore",
   });
 });
 
 app.get("/api/data", (req, res) => {
-  const data = readData();
-  const safeSettings = { ...(data.settings || DEFAULT_SETTINGS) };
-  delete (safeSettings as any).adminPasscode; // CRITICAL: NEVER leak admin passcode over public API
   res.json({
-    products: data.products || [],
-    orders: data.orders || [],
-    settings: safeSettings,
+    status: "ok",
+    sourceOfTruth: "firestore",
+    message: "Firestore is the authoritative source of truth. Query Firestore collections directly.",
   });
 });
 
-app.post("/api/admin/login", (req, res) => {
+app.post(["/api/admin/verify-passcode", "/api/admin/login"], (req, res) => {
   const { passcode } = req.body || {};
   if (!passcode) {
     return res.status(400).json({ success: false, error: "رمز عبور را وارد کنید" });
   }
-  const data = readData();
-  const configuredPasscode = process.env.ADMIN_PASSCODE || data.settings?.adminPasscode || '1383';
+  const configuredPasscode = process.env.ADMIN_PASSCODE;
+  if (!configuredPasscode) {
+    console.error("[ADMIN_AUTH_ERROR] ADMIN_PASSCODE environment variable is not configured.");
+    return res.status(500).json({ success: false, error: "متغیر امنیتی ADMIN_PASSCODE در سرور تنظیم نشده است." });
+  }
   if (String(passcode).trim() === String(configuredPasscode).trim()) {
-    // Generate secure randomized session token
     const token = 'adm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
     return res.json({ success: true, token });
   }
-  return res.status(401).json({ success: false, error: "رمز عبور مدیریت اشتباه است" });
+  return res.status(401).json({ success: false, error: "رمز عبور وارد شده اشتباه است" });
 });
 
-app.get("/api/products", (req, res) => {
-  const data = readData();
-  res.json(data.products || []);
+app.get("/api/products", async (req, res) => {
+  const products = await fetchProductsFromFirestore();
+  res.json(products);
 });
 
 app.get("/api/orders", (req, res) => {
-  const data = readData();
-  res.json(data.orders || []);
+  res.json({ message: "Orders are stored authoritatively in Firestore collection 'orders'." });
 });
 
-app.post("/api/products", (req, res) => {
-  const { products } = req.body;
-  if (!Array.isArray(products)) {
-    return res.status(400).json({ error: "Invalid products" });
+app.post("/api/orders/track", async (req, res) => {
+  const { query, phone } = req.body || {};
+  const normalize = (str: any) =>
+    String(str || '')
+      .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+      .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+      .replace(/\D/g, '')
+      .trim();
+
+  const cleanPhone = normalize(phone);
+  const rawQuery = String(query || '').trim();
+  const cleanQuery = normalize(query);
+
+  if (!cleanPhone && (!rawQuery || rawQuery.length < 4)) {
+    return res.status(400).json({ error: "جهت حفظ امنیت و حریم خصوصی، ورود شماره موبایل سفارش‌دهنده الزامی است." });
   }
+
+  // Read orders from server store
   const current = readData();
-  const delSet = new Set(current.deletedProductIds || []);
-  const validIncoming = products.filter((p: any) => p && p.id && !delSet.has(p.id));
-  current.products = mergeProductsLists(current.products || [], validIncoming).filter((p: any) => !delSet.has(p.id));
-  writeData(current);
-  res.json({ success: true, count: current.products.length });
+  const orders: any[] = Array.isArray(current.orders) ? current.orders : [];
+
+  // Filter orders where customer phone matches cleanPhone, or order code matches query
+  const matched = orders.filter((o: any) => {
+    if (!o) return false;
+    const oPhone = normalize(o.customer?.phone || '');
+    const oCode = String(o.orderCode || '').toLowerCase().trim();
+    const oId = String(o.id || '').toLowerCase().trim();
+
+    // If phone is provided, phone MUST match
+    if (cleanPhone && cleanPhone.length >= 4) {
+      const phoneMatches = oPhone.includes(cleanPhone) || cleanPhone.includes(oPhone);
+      if (!phoneMatches) return false;
+
+      // If specific order code/id was also provided, verify it too
+      if (rawQuery && rawQuery.length >= 3 && rawQuery !== cleanPhone) {
+        const q = rawQuery.toLowerCase();
+        return oCode.includes(q) || oId.includes(q);
+      }
+      return true;
+    }
+
+    // Reject unverified queries without phone
+    return false;
+  });
+
+  if (matched.length === 0) {
+    return res.status(404).json({
+      error: "سفارشی با مشخصات وارد شده یافت نشد یا دسترسی مجاز نیست. لطفاً شماره موبایل ثبت شده هنگام خرید را بررسی نمایید."
+    });
+  }
+
+  // Strictly sanitize orders to tracking-only info — NEVER expose customer address, full phone, postal code, payment secrets
+  const sanitizedOrders = matched.map((o: any) => ({
+    id: o.id,
+    orderCode: o.orderCode,
+    createdAt: o.createdAt,
+    status: o.status,
+    postalTrackingCode: o.postalTrackingCode || '',
+    finalAmount: o.finalAmount,
+    items: Array.isArray(o.items)
+      ? o.items.map((item: any) => ({
+          product: {
+            id: item.product?.id,
+            title: item.product?.title,
+            price: item.product?.price,
+            image: item.product?.images?.[0] || item.product?.image || '',
+            code: item.product?.code,
+          },
+          quantity: item.quantity,
+        }))
+      : [],
+    customer: {
+      fullName: o.customer?.fullName || 'خریدار',
+      province: o.customer?.province || '',
+      city: o.customer?.city || '',
+    },
+  }));
+
+  res.json({ success: true, orders: sanitizedOrders });
 });
 
-app.post("/api/products/save", (req, res) => {
+app.post("/api/products/save", async (req, res) => {
   const { product } = req.body;
   if (!product || !product.id) {
     return res.status(400).json({ error: "Invalid product payload" });
   }
-  const current = readData();
-  if (Array.isArray(current.deletedProductIds)) {
-    current.deletedProductIds = current.deletedProductIds.filter((id: string) => id !== product.id);
-  }
-  const prods = Array.isArray(current.products) ? current.products : [];
-  const idx = prods.findIndex((p: any) => p.id === product.id);
   const cleanP = { ...product, updatedAt: new Date().toISOString() };
-  if (idx >= 0) {
-    prods[idx] = cleanP;
-  } else {
-    prods.unshift(cleanP);
-  }
-  current.products = prods;
-  writeData(current);
-  writeFirestoreDoc('products', product.id, cleanP).catch(() => {});
-  res.json({ success: true, product: cleanP, total: prods.length });
+  await writeFirestoreDoc('products', product.id, cleanP);
+  res.json({ success: true, product: cleanP });
 });
 
-app.post("/api/orders", (req, res) => {
-  const { orders } = req.body;
-  if (!Array.isArray(orders)) {
-    return res.status(400).json({ error: "Invalid orders" });
+app.post(["/api/products/delete", "/api/products/:id"], async (req, res) => {
+  const productId = req.body?.productId || req.params?.id;
+  if (productId) {
+    await deleteFirestoreDoc('products', productId);
   }
-  const current = readData();
-  const validIncoming = orders.filter((o: any) => o && o.id);
-  current.orders = mergeOrdersLists(current.orders || [], validIncoming);
-  writeData(current);
-  res.json({ success: true, count: current.orders.length });
+  res.json({ success: true });
 });
 
-app.post("/api/orders/new", (req, res) => {
+app.delete("/api/products/:id", async (req, res) => {
+  const productId = req.params.id;
+  if (productId) {
+    await deleteFirestoreDoc('products', productId);
+  }
+  res.json({ success: true });
+});
+
+app.post(["/api/orders/new", "/api/orders/save"], async (req, res) => {
   const { order } = req.body;
   if (!order || !order.id) {
     return res.status(400).json({ error: "Invalid order data" });
   }
+
+  const cleanOrder = {
+    ...order,
+    createdAt: order.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
   const current = readData();
-  const existingMap = new Map((current.orders || []).map((o: any) => [o.id, o]));
-  const existing = existingMap.get(order.id);
-  if (existing) {
-    existingMap.set(order.id, mergeOrders(existing, order));
-  } else {
-    existingMap.set(order.id, order);
-  }
-
-  current.orders = Array.from(existingMap.values()).sort((a: any, b: any) =>
-    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-  );
-
-  // Deduct product stock on server
-  if (Array.isArray(order.items) && Array.isArray(current.products)) {
-    order.items.forEach((item: any) => {
-      const pId = item?.product?.id;
-      const qty = Number(item?.quantity) || 1;
-      const prod = current.products.find((p: any) => p.id === pId);
-      if (prod && typeof prod.stock === "number") {
-        prod.stock = Math.max(0, prod.stock - qty);
-        prod.updatedAt = new Date().toISOString();
-      }
-    });
-  }
-
+  let ords = Array.isArray(current.orders) ? current.orders : [];
+  ords = [cleanOrder, ...ords.filter((o: any) => o.id !== cleanOrder.id)];
+  current.orders = ords;
   writeData(current);
 
-  // Dispatch notifications asynchronously to both Telegram and ntfy
-  dispatchOrderToTelegram(order, current.settings || {}).catch(() => {});
-  dispatchOrderToNtfy(order, current.settings || {}).catch(() => {});
+  writeFirestoreDoc('orders', cleanOrder.id, cleanOrder).catch(() => {});
 
-  res.json({ success: true, order, total: current.orders.length });
+  // Dispatch notifications asynchronously to Telegram and ntfy
+  dispatchOrderToTelegram(cleanOrder, current.settings || {}).catch(() => {});
+  dispatchOrderToNtfy(cleanOrder, current.settings || {}).catch(() => {});
+
+  res.json({ success: true, orderId: cleanOrder.id, orderCode: cleanOrder.orderCode });
 });
 
-app.patch("/api/orders/:id", (req, res) => {
+app.post(["/api/orders/delete", "/api/orders/:id"], async (req, res) => {
+  const orderId = req.body?.orderId || req.params?.id;
+  if (orderId) {
+    await deleteFirestoreDoc('orders', orderId);
+  }
+  res.json({ success: true });
+});
+
+app.delete("/api/orders/:id", async (req, res) => {
   const orderId = req.params.id;
-  const updates = req.body;
-  const current = readData();
-  const existingOrders = Array.isArray(current.orders) ? current.orders : [];
-  const idx = existingOrders.findIndex((o: any) => o.id === orderId);
-  if (idx >= 0) {
-    existingOrders[idx] = { ...existingOrders[idx], ...updates, updatedAt: new Date().toISOString() };
-    current.orders = existingOrders;
-    writeData(current);
-    res.json({ success: true, order: existingOrders[idx] });
-  } else {
-    res.status(404).json({ error: "Order not found" });
+  if (orderId) {
+    await deleteFirestoreDoc('orders', orderId);
   }
-});
-
-app.post("/api/reset-all", (req, res) => {
-  const current = readData();
-  current.products = [];
-  current.orders = [];
-  writeData(current);
-  res.json({ success: true, message: "تمامی محصولات و سفارشات با موفقیت پاکسازی شدند." });
-});
-
-app.post("/api/load-demo-products", (req, res) => {
-  const current = readData();
-  const demoIds = INITIAL_SERVER_PRODUCTS.map((p: any) => p.id);
-  if (Array.isArray(current.deletedProductIds)) {
-    current.deletedProductIds = current.deletedProductIds.filter((id: string) => !demoIds.includes(id));
-  }
-  current.products = [...INITIAL_SERVER_PRODUCTS];
-  writeData(current);
-  res.json({ success: true, message: "محصولات نمونه بارگذاری شدند.", count: current.products.length, products: current.products });
-});
-
-app.post("/api/clear-all-products", (req, res) => {
-  const current = readData();
-  const deletedIds = (current.products || []).map((p: any) => p.id);
-  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
-  deletedIds.forEach((id: string) => {
-    if (id && !current.deletedProductIds.includes(id)) current.deletedProductIds.push(id);
-  });
-  current.products = [];
-  writeData(current);
-  res.json({ success: true, message: "تمامی عینک‌ها پاکسازی شدند تا محصولات خودتان را اضافه کنید.", count: 0, products: [] });
-});
-
-app.delete("/api/products/:id", (req, res) => {
-  const productId = req.params.id;
-  const current = readData();
-  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
-  if (productId && !current.deletedProductIds.includes(productId)) current.deletedProductIds.push(productId);
-  current.products = (current.products || []).filter((p: any) => p.id !== productId);
-  writeData(current);
-  deleteFirestoreDoc('products', productId).catch(() => {});
-  res.json({ success: true, count: current.products.length });
-});
-
-app.post("/api/products/delete", (req, res) => {
-  const { productId } = req.body;
-  const current = readData();
-  if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
-  if (productId && !current.deletedProductIds.includes(productId)) current.deletedProductIds.push(productId);
-  current.products = (current.products || []).filter((p: any) => p.id !== productId);
-  writeData(current);
-  deleteFirestoreDoc('products', productId).catch(() => {});
-  res.json({ success: true, count: current.products.length });
-});
-
-app.delete("/api/orders/:id", (req, res) => {
-  const orderId = req.params.id;
-  const current = readData();
-  current.orders = (current.orders || []).filter((o: any) => o.id !== orderId);
-  writeData(current);
-  res.json({ success: true, count: current.orders.length });
-});
-
-app.post("/api/orders/delete", (req, res) => {
-  const { orderId } = req.body;
-  const current = readData();
-  current.orders = (current.orders || []).filter((o: any) => o.id !== orderId);
-  writeData(current);
-  res.json({ success: true, count: current.orders.length });
+  res.json({ success: true });
 });
 
 // Analytics & Visitor Counter Endpoints
@@ -1093,8 +798,8 @@ async function fetchWithRetry(
 // Helper function to dispatch order notifications to Telegram
 async function dispatchOrderToTelegram(data: any, settings: any) {
   try {
-    const telegramToken = process.env.TELEGRAM_BOT_TOKEN || settings.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
-    const chatId = process.env.TELEGRAM_CHAT_ID || settings.telegramChatId || '8574668861';
+    const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
     const customWebhook = settings.telegramWebhookUrl || data.webhookUrl;
 
     const orderId = data.orderId || data.id || `ORD-${Date.now()}`;
@@ -1224,8 +929,8 @@ async function dispatchUpdateToTelegram(updateInfo: {
   try {
     const current = readData();
     const settings = current.settings || {};
-    const telegramToken = process.env.TELEGRAM_BOT_TOKEN || settings.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
-    const chatId = process.env.TELEGRAM_CHAT_ID || settings.telegramChatId || '8574668861';
+    const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!telegramToken || !chatId) {
       console.warn('[Telegram Webhook Notification] No bot token or chat ID configured.');
@@ -1381,8 +1086,6 @@ app.post("/api/functions/mutate-product", async (req, res) => {
       const title = targetProd?.title || targetId;
 
       current.products = prods.filter((p: any) => p.id !== targetId);
-      if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
-      if (targetId && !current.deletedProductIds.includes(targetId)) current.deletedProductIds.push(targetId);
       writeData(current);
 
       deleteFirestoreDoc('products', targetId).catch(() => {});
@@ -1470,10 +1173,6 @@ app.post("/api/functions/mutate-product", async (req, res) => {
         updatedAt: new Date().toISOString(),
       };
       prods[idx] = cleanProduct;
-    }
-
-    if (Array.isArray(current.deletedProductIds)) {
-      current.deletedProductIds = current.deletedProductIds.filter((id: string) => id !== targetId);
     }
 
     current.products = prods;
@@ -1835,7 +1534,7 @@ app.post("/api/send-invoice-email", async (req, res) => {
       return res.status(400).json({ error: "Order details required" });
     }
     const currentData = readData();
-    const settings = currentData.settings || {};
+    const settings = (currentData.settings || {}) as any;
     const emailTo = targetEmail || settings.managerEmail || "matinjahanbani2024@gmail.com";
 
     // Format comprehensive email summary
@@ -1871,7 +1570,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 
       const current = readData();
       const settings = current.settings || {};
-      const telegramToken = process.env.TELEGRAM_BOT_TOKEN || settings.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
+      const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 
       let answerText = "عملیات انجام شد.";
 
@@ -1964,34 +1663,11 @@ app.post("/api/settings", (req, res) => {
 });
 
 app.post("/api/sync-all", (req, res) => {
-  const { products, orders, settings, deletedProductIds } = req.body;
-  const current = readData();
-
-  if (Array.isArray(deletedProductIds)) {
-    if (!Array.isArray(current.deletedProductIds)) current.deletedProductIds = [];
-    deletedProductIds.forEach((id: string) => {
-      if (id && !current.deletedProductIds.includes(id)) current.deletedProductIds.push(id);
-    });
-  }
-
-  const delSet = new Set(current.deletedProductIds || []);
-
-  if (Array.isArray(products) && products.length > 0) {
-    const validIncoming = products.filter((p: any) => p && p.id && !delSet.has(p.id));
-    current.products = mergeProductsLists(current.products || [], validIncoming).filter((p: any) => !delSet.has(p.id));
-  }
-
-  if (Array.isArray(orders) && orders.length > 0) {
-    const validIncoming = orders.filter((o: any) => o && o.id);
-    current.orders = mergeOrdersLists(current.orders || [], validIncoming);
-  }
-
-  if (settings && typeof settings === "object") {
-    current.settings = { ...current.settings, ...settings };
-  }
-
-  writeData(current);
-  res.json({ success: true, data: current });
+  res.status(410).json({
+    status: "deprecated",
+    sourceOfTruth: "firestore",
+    message: "Firestore is the sole authoritative Source of Truth. Direct Firestore operations are used."
+  });
 });
 
 export default app;

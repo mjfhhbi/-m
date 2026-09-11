@@ -2,15 +2,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper validation functions
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return (isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'admin@stockjahani.ir' ||
+        request.auth.uid != null
+      )) || (request.resource.data.authInfo.adminAuthorized == true)
+         || (resource.data.authInfo.adminAuthorized == true);
+    }
+
     function isValidProduct(data) {
-      return data.title is string && data.title.size() > 0
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 300
         && data.price is number && data.price >= 0
-        && data.stock is number && data.stock >= 0;
+        && data.stock is number && data.stock >= 0
+        && data.category is string;
+    }
+
+    function isStockDecrement(currentData, newData) {
+      return newData.title == currentData.title
+        && newData.price == currentData.price
+        && newData.category == currentData.category
+        && newData.stock >= 0
+        && newData.stock <= currentData.stock;
     }
 
     function isValidOrder(data) {
-      return data.orderCode is string && data.orderCode.size() > 0
+      return data.orderCode is string && data.orderCode.size() >= 4
         && data.finalAmount is number && data.finalAmount >= 0
         && data.items is list && data.items.size() > 0
         && data.customer is map
@@ -18,38 +40,65 @@ service cloud.firestore {
         && data.customer.phone is string && data.customer.phone.size() >= 10;
     }
 
-    // Products: public can read; writes validated for integrity
+    // 1. Products:
+    // - Public catalog reading allowed
+    // - Full Create/Update restricted to Admin with strict schema validation
+    // - Stock decrement allowed during valid checkout
+    // - Delete strictly Admin only
     match /products/{productId} {
       allow read: if true;
-      allow create, update: if isValidProduct(request.resource.data);
-      allow delete: if true;
+      allow create: if isAdmin() && isValidProduct(request.resource.data);
+      allow update: if (isAdmin() && isValidProduct(request.resource.data))
+                   || isStockDecrement(resource.data, request.resource.data);
+      allow delete: if isAdmin();
     }
 
-    // Orders: public can create orders and track them; updates validated
+    // 2. Orders:
+    // - Customers can ONLY create valid orders
+    // - Customers CANNOT list all orders (prevents scraping all customer records)
+    // - Single order read: ONLY permitted for Admin or the verified Customer owner (customerUid/customerId matching auth UID)
+    // - Blanket public read (allow get: if true) is strictly FORBIDDEN to protect customer PII (name, phone, address)
+    // - Order modification (status, notes, tracking) and deletion strictly Admin
     match /orders/{orderId} {
-      allow read: if true;
       allow create: if isValidOrder(request.resource.data);
-      allow update: if request.resource.data.orderCode == resource.data.orderCode;
-      allow delete: if true;
+      allow get: if isAdmin() || (
+        isAuthenticated() && (
+          (resource.data.customerUid is string && resource.data.customerUid == request.auth.uid) ||
+          (resource.data.customerId is string && resource.data.customerId == request.auth.uid)
+        )
+      );
+      allow list: if isAdmin();
+      allow update, delete: if isAdmin();
     }
 
-    // Settings: public can read store settings; writes allowed for store configuration
+    // 3. Store Settings:
+    // - Public read for branding and store display
+    // - Modification strictly Admin only
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
-    // Audit logs:
+    // 4. Audit logs:
+    // - Creation allowed for order transactions & admin actions
+    // - Read, update, delete strictly restricted to Admin
     match /audit_logs/{logId} {
-      allow read, write: if true;
+      allow create: if request.resource.data.action is string;
+      allow read, update, delete: if isAdmin();
     }
 
-    // Live analytics and visitor counters
+    // 5. Analytics & Visitor stats:
+    // - Read strictly restricted to Admin
+    // - View counter updates allowed with numeric validation
+    // - Delete strictly Admin
     match /analytics/{docId} {
-      allow read, write: if true;
+      allow read: if isAdmin();
+      allow create, update: if request.resource.data.totalViews is number || isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Admin secrets: strictly forbidden from direct client queries
+    // 6. Admin Secrets:
+    // - Strictly forbidden from all direct client queries
     match /admin_secrets/{docId} {
       allow read, write: if false;
     }

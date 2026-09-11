@@ -408,27 +408,7 @@ export default function App() {
         return;
       }
     } catch (err) {
-      // Offline fallback
-      const targetPasscode = settings.adminPasscode || '1383';
-      if (entered === targetPasscode) {
-        sessionStorage.setItem('admin_session_auth', 'true');
-        setIsAdminAuthenticated(true);
-        setIsPasscodeModalOpen(false);
-        setProducts((prev) => {
-          if (prev.length === 0) {
-            const stored = getStoredProducts();
-            if (stored.length > 0) return stored;
-          }
-          return prev;
-        });
-        setCurrentView('admin');
-        showToast('با موفقیت وارد پنل مدیریت شدید');
-        const url = new URL(window.location.href);
-        url.searchParams.set('view', 'admin');
-        window.history.replaceState({}, '', url.toString());
-      } else {
-        setPasscodeError('رمز عبور وارد شده اشتباه است.');
-      }
+      setPasscodeError('خطا در ارتباط با سرور جهت تایید هویت مدیر. لطفاً اتصال شبکه را بررسی کنید.');
     }
   };
 

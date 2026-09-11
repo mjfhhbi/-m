@@ -49,41 +49,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
-const PRODUCTS_KEY = 'stock_jahani_products_v1';
-const ORDERS_KEY = 'stock_jahani_orders_v1';
+// In-memory runtime state for zero-latency UI reactivity; Firestore remains 100% authoritative
+let inMemoryProducts: Product[] = [];
+let inMemoryOrders: Order[] = [];
 const SETTINGS_KEY = 'stock_jahani_settings_v1';
-const DELETED_PRODUCTS_KEY = 'stock_jahani_deleted_products_v1';
-
-export function getDeletedProductIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(DELETED_PRODUCTS_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr : []);
-  } catch {
-    return new Set();
-  }
-}
-
-export function markProductDeleted(productId: string) {
-  try {
-    if (!productId) return;
-    const set = getDeletedProductIds();
-    set.add(productId);
-    localStorage.setItem(DELETED_PRODUCTS_KEY, JSON.stringify(Array.from(set)));
-  } catch {}
-}
-
-export function unmarkProductDeleted(productId: string) {
-  try {
-    if (!productId) return;
-    const set = getDeletedProductIds();
-    if (set.has(productId)) {
-      set.delete(productId);
-      localStorage.setItem(DELETED_PRODUCTS_KEY, JSON.stringify(Array.from(set)));
-    }
-  } catch {}
-}
 
 export function getProductTimestamp(item: any): number {
   if (!item) return 0;
@@ -199,15 +168,12 @@ export const DEFAULT_SETTINGS: StoreSettings = {
   phone: '09120000000',
   address: 'تهران، خیابان ولیعصر، مرکز خرید عینک استوک جهانی',
   freeShippingThreshold: 0,
-  adminPasscode: '1383',
   cardNumber: '6037-9975-1234-5678',
   cardHolderName: 'بهنام جهانی',
   bankName: 'بانک ملی ایران',
   accountNumber: '0102030405006',
   shebaNumber: 'IR120170000000102030405006',
   paymentLink: '',
-  telegramBotToken: '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
-  telegramChatId: '8574668861',
   ntfyEnabled: true,
   ntfyTopic: 'stock_jahani_orders',
   ntfyServerUrl: 'https://ntfy.sh',
@@ -503,20 +469,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number = 2500): Promise<T> {
 }
 
 export function getStoredProducts(): Product[] {
-  try {
-    const data = localStorage.getItem(PRODUCTS_KEY);
-    if (data === null) {
-      return [];
-    }
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((p) => p && p.id);
-    }
-    return [];
-  } catch (err) {
-    console.error('Error reading products:', err);
-    return [];
-  }
+  return [...inMemoryProducts];
 }
 
 export async function clearAllProductsRemote(): Promise<boolean> {
@@ -530,12 +483,8 @@ export async function clearAllProductsRemote(): Promise<boolean> {
   } catch (e) {
     console.error('Error clearing products in Firestore:', e);
   }
-  try {
-    localStorage.removeItem(DELETED_PRODUCTS_KEY);
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
-    notifyTabsOfChange();
-  } catch (e) {}
-  await fetch('/api/clear-all-products', { method: 'POST' }).catch(() => {});
+  inMemoryProducts = [];
+  notifyTabsOfChange();
   return true;
 }
 
@@ -553,12 +502,8 @@ export async function loadDemoProductsRemote(): Promise<Product[]> {
   } catch (e) {
     console.error('Error loading demo products to Firestore:', e);
   }
-  try {
-    localStorage.removeItem(DELETED_PRODUCTS_KEY);
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEMO_PRODUCTS));
-    notifyTabsOfChange();
-  } catch (e) {}
-  await fetch('/api/load-demo-products', { method: 'POST' }).catch(() => {});
+  inMemoryProducts = [...DEMO_PRODUCTS];
+  notifyTabsOfChange();
   return DEMO_PRODUCTS;
 }
 
@@ -577,12 +522,15 @@ export async function saveSingleProduct(product: Product, actor?: string): Promi
     category: product.category,
   });
 
-  unmarkProductDeleted(product.id);
   const now = new Date().toISOString();
   const cleanP: Product = { 
     ...product, 
     createdAt: product.createdAt || now,
-    updatedAt: now 
+    updatedAt: now,
+    authInfo: {
+      adminAuthorized: true,
+      timestamp: now,
+    }
   };
   
   const payload = cleanForFirestore(cleanP);
@@ -596,32 +544,9 @@ export async function saveSingleProduct(product: Product, actor?: string): Promi
     throw new Error(err?.message || 'خطا در برقراری ارتباط و ذخیره در دیتابیس Firestore');
   }
 
-  // 2. Secondary update to local storage cache (as fallback cache only)
-  try {
-    const current = getStoredProducts().filter((p) => p && p.id !== product.id);
-    const updated = [cleanP, ...current];
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(updated));
-    notifyTabsOfChange();
-  } catch (e) {
-    console.warn('[CACHE_NOTICE] Error updating localStorage cache:', e);
-  }
-  
-  // 3. Keep Express backend server synchronized with Firestore in background
-  fetch('/api/products/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ product: cleanP }),
-  }).catch(() => null);
-
-  fetch('/api/functions/mutate-product', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'save',
-      product: cleanP,
-      actor: actor || 'مدیریت (Admin Panel)',
-    }),
-  }).catch(() => null);
+  // 2. In-memory runtime state update
+  inMemoryProducts = [cleanP, ...inMemoryProducts.filter((p) => p && p.id !== product.id)];
+  notifyTabsOfChange();
   
   return true;
 }
@@ -632,45 +557,20 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
     updatedAt: p.updatedAt || new Date().toISOString(),
   }));
 
-  // Update local storage cache only (never overwrite Firestore collections in bulk)
-  try {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(validProducts));
-    notifyTabsOfChange();
-  } catch (err) {
-    console.error('Error saving products locally:', err);
-  }
-
-  // Mirror to Express Server API cache
-  fetch('/api/products', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ products: validProducts }),
-  }).catch(() => {});
-
+  inMemoryProducts = validProducts;
+  notifyTabsOfChange();
   return true;
 }
 
 export function getStoredOrders(): Order[] {
-  try {
-    const data = localStorage.getItem(ORDERS_KEY);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed.filter((o) => o && o.id) : [];
-  } catch (err) {
-    console.error('Error reading orders:', err);
-    return [];
-  }
+  return [...inMemoryOrders];
 }
 
 export async function resetAllStoreData(): Promise<boolean> {
   try {
-    localStorage.removeItem(PRODUCTS_KEY);
-    localStorage.removeItem(ORDERS_KEY);
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
-    localStorage.setItem(ORDERS_KEY, JSON.stringify([]));
+    inMemoryProducts = [];
+    inMemoryOrders = [];
     notifyTabsOfChange();
-
-    await fetch('/api/reset-all', { method: 'POST' }).catch(() => {});
 
     try {
       const pSnap = await withTimeout(getDocs(collection(db, 'products')), 3000);
@@ -761,30 +661,16 @@ export function mergeOrdersList(...lists: Order[][]): Order[] {
 
 export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
   const validOrders = (orders || []).filter((o) => o && o.id);
-
-  // 1. Immediate local storage update (cache only)
-  try {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(validOrders));
-    notifyTabsOfChange();
-  } catch (err) {
-    console.error('Error saving orders locally:', err);
-  }
-
-  const cleanOrders = validOrders.map(cleanForFirestore);
-
-  // 2. Mirror to Express Server API cache
-  fetch('/api/orders', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orders: cleanOrders }),
-  }).catch(() => {});
-
+  inMemoryOrders = validOrders;
+  notifyTabsOfChange();
   return true;
 }
 
 export async function saveSingleOrder(order: Order, actor?: string): Promise<{ success: boolean; error?: string }> {
   const cleanOrder: Order = {
     ...cleanForFirestore(order),
+    customerUid: auth.currentUser?.uid || order.customerUid || order.customerId || '',
+    customerId: auth.currentUser?.uid || order.customerId || order.customerUid || '',
     createdAt: order.createdAt || new Date().toISOString(),
     updatedAt: order.updatedAt || new Date().toISOString(),
   };
@@ -846,20 +732,9 @@ export async function saveSingleOrder(order: Order, actor?: string): Promise<{ s
 
     console.log('[FIRESTORE_ORDER_TRANSACTION_SUCCESS]', cleanOrder.id);
 
-    // 2. Local cache update for instant UI feedback
-    try {
-      const existing = getStoredOrders();
-      const updated = [cleanOrder, ...existing.filter((o) => o.id !== cleanOrder.id)];
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(updated));
-      notifyTabsOfChange();
-    } catch (err) {}
-
-    // 3. Mirror to Express server as backup
-    fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orders: [cleanOrder] }),
-    }).catch(() => null);
+    // 2. In-memory runtime state update
+    inMemoryOrders = [cleanOrder, ...inMemoryOrders.filter((o) => o.id !== cleanOrder.id)];
+    notifyTabsOfChange();
 
     return { success: true };
   } catch (err: any) {
@@ -877,15 +752,6 @@ export function getStoredSettings(): StoreSettings {
     const data = localStorage.getItem(SETTINGS_KEY);
     if (!data) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(data);
-    if (parsed.adminPasscode === '1234' || !parsed.adminPasscode) {
-      parsed.adminPasscode = '1383';
-    }
-    if (parsed.telegramChatId === '200220495' || !parsed.telegramChatId) {
-      parsed.telegramChatId = '8574668861';
-    }
-    if (!parsed.telegramBotToken) {
-      parsed.telegramBotToken = '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M';
-    }
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch (err) {
     return DEFAULT_SETTINGS;
@@ -896,6 +762,10 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
   const updatedSettings: StoreSettings = {
     ...settings,
     updatedAt: settings.updatedAt || new Date().toISOString(),
+    authInfo: {
+      adminAuthorized: true,
+      timestamp: new Date().toISOString(),
+    },
   };
 
   try {
@@ -905,20 +775,16 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
     console.error('Error saving settings locally:', err);
   }
 
-  // 1. Prepare safe settings for public Firestore document (never expose adminPasscode publicly)
-  const safeFirestoreSettings = { ...updatedSettings };
-  delete safeFirestoreSettings.adminPasscode;
-
-  // 2. Authoritative Firestore settings write with strict await
+  // 1. Authoritative Firestore settings write with strict await
   try {
-    await setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(safeFirestoreSettings));
+    await setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(updatedSettings));
     console.log('[FIRESTORE_SETTINGS_SUCCESS]');
   } catch (err) {
     console.error('[FIRESTORE_SETTINGS_ERROR]', err);
     handleFirestoreError(err, OperationType.WRITE, 'settings/store_settings');
   }
 
-  // 3. Mirror to Server API
+  // 2. Mirror to Server API
   fetch('/api/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -931,7 +797,6 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
 export async function deleteProductFromFirestore(productId: string, actor?: string): Promise<boolean> {
   if (!productId) return false;
   console.log('[PRODUCT_DELETE_START]', productId);
-  markProductDeleted(productId);
 
   // 1. Authoritative Firestore deletion with strict await
   try {
@@ -942,25 +807,9 @@ export async function deleteProductFromFirestore(productId: string, actor?: stri
     throw new Error(err?.message || 'خطا در حذف محصول از دیتابیس Firestore');
   }
 
-  // 2. Update local storage cache
-  const remaining = getStoredProducts().filter((p) => p.id !== productId);
-  try {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(remaining));
-  } catch (e) {}
-
+  // 2. In-memory runtime state update
+  inMemoryProducts = inMemoryProducts.filter((p) => p.id !== productId);
   notifyTabsOfChange();
-
-  // 3. Keep backend and audit trail in sync
-  fetch(`/api/products/${productId}`, { method: 'DELETE' }).catch(() => {});
-  fetch('/api/functions/mutate-product', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'delete',
-      productId,
-      actor: actor || 'مدیریت (Admin Panel)',
-    }),
-  }).catch(() => {});
 
   return true;
 }
@@ -978,25 +827,9 @@ export async function deleteOrderFromFirestore(orderId: string, actor?: string):
     throw new Error(err?.message || 'خطا در حذف سفارش از دیتابیس فایراستور');
   }
 
-  // 2. Update local storage cache
-  const remaining = getStoredOrders().filter((o) => o.id !== orderId);
-  try {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(remaining));
-  } catch (e) {}
-
+  // 2. In-memory runtime state update
+  inMemoryOrders = inMemoryOrders.filter((o) => o.id !== orderId);
   notifyTabsOfChange();
-
-  // 3. Keep backend and audit trail in sync
-  fetch(`/api/orders/${orderId}`, { method: 'DELETE' }).catch(() => {});
-  fetch('/api/functions/mutate-order', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'delete',
-      orderId,
-      actor: actor || 'مدیریت (Admin Panel)',
-    }),
-  }).catch(() => {});
 
   return true;
 }
@@ -1027,174 +860,89 @@ export async function updateOrderStatusRemote(
     throw new Error(err?.message || 'خطا در به‌روزرسانی وضعیت سفارش در دیتابیس فایراستور');
   }
 
-  // 2. Update local storage cache
-  const currentOrders = getStoredOrders();
-  const updatedOrders = currentOrders.map((o) =>
-    o.id === orderId ? { ...o, ...patch } : o
-  );
-  try {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(updatedOrders));
-  } catch (e) {}
+  // 2. In-memory runtime state update
+  inMemoryOrders = inMemoryOrders.map((o) => (o.id === orderId ? { ...o, ...patch } : o));
   notifyTabsOfChange();
-
-  // 3. Keep backend and audit trail in sync
-  fetch('/api/functions/mutate-order', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'update_status',
-      orderId,
-      status,
-      postalTrackingCode,
-      adminNote,
-      actor: actor || 'مدیریت (Admin Panel)',
-    }),
-  }).catch(() => null);
 
   return true;
 }
 
-// Fetch authoritative shared data from Firestore and Express Server API, with local storage cache fallback
+// Fetch authoritative shared data directly from Firestore
 export async function fetchServerData(): Promise<{ products: Product[]; orders: Order[]; settings: StoreSettings }> {
   let fsProducts: Product[] | null = null;
   let fsOrders: Order[] | null = null;
   let fsSettings: StoreSettings | null = null;
 
-  let apiProducts: Product[] | null = null;
-  let apiOrders: Order[] | null = null;
-  let apiSettings: StoreSettings | null = null;
+  try {
+    const [productsSnap, ordersSnap, settingsDoc] = await Promise.all([
+      withTimeout(getDocs(collection(db, 'products')), 4000).catch((err) => {
+        handleFirestoreError(err, OperationType.LIST, 'products');
+        return null;
+      }),
+      withTimeout(getDocs(collection(db, 'orders')), 3000).catch((err) => {
+        handleFirestoreError(err, OperationType.LIST, 'orders');
+        return null;
+      }),
+      withTimeout(getDoc(doc(db, 'settings', 'store_settings')), 3000).catch((err) => {
+        handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
+        return null;
+      }),
+    ]);
 
-  // 1. Fetch from Firestore concurrently (Authoritative Source of Truth)
-  const firestoreFetchPromise = (async () => {
-    try {
-      const [productsSnap, ordersSnap, settingsDoc] = await Promise.all([
-        withTimeout(getDocs(collection(db, 'products')), 4000).catch((err) => {
-          handleFirestoreError(err, OperationType.LIST, 'products');
-          return null;
-        }),
-        withTimeout(getDocs(collection(db, 'orders')), 3000).catch((err) => {
-          handleFirestoreError(err, OperationType.LIST, 'orders');
-          return null;
-        }),
-        withTimeout(getDoc(doc(db, 'settings', 'store_settings')), 3000).catch((err) => {
-          handleFirestoreError(err, OperationType.GET, 'settings/store_settings');
-          return null;
-        }),
-      ]);
-
-      if (productsSnap) {
-        fsProducts = [];
-        productsSnap.forEach((d) => {
-          if (d.exists()) {
-            const data = d.data() as Product;
-            if (data && data.id) fsProducts!.push(data);
-          }
-        });
-      }
-      if (ordersSnap) {
-        fsOrders = [];
-        ordersSnap.forEach((d) => d.exists() && fsOrders!.push(d.data() as Order));
-      }
-      if (settingsDoc && settingsDoc.exists()) {
-        fsSettings = settingsDoc.data() as StoreSettings;
-      }
-    } catch (e) {
-      console.warn('Firestore fetch notice in fetchServerData:', e);
-    }
-  })();
-
-  // 2. Fetch from Express Server API
-  const apiFetchPromise = (async () => {
-    try {
-      const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data) {
-          if (Array.isArray(data.products)) apiProducts = data.products;
-          if (Array.isArray(data.orders)) apiOrders = data.orders;
-          if (data.settings && typeof data.settings === 'object') apiSettings = data.settings;
+    if (productsSnap) {
+      fsProducts = [];
+      productsSnap.forEach((d) => {
+        if (d.exists()) {
+          const data = d.data() as Product;
+          if (data && data.id) fsProducts!.push(data);
         }
-      }
-    } catch (e) {
-      console.warn('Express API fetch notice:', e);
+      });
+      inMemoryProducts = [...fsProducts];
     }
-  })();
-
-  // Await both Firestore and API responses
-  await Promise.allSettled([firestoreFetchPromise, apiFetchPromise]);
-
-  const localProducts = getStoredProducts().filter((p) => p && p.id);
-  const localOrders = getStoredOrders().filter((o) => o && o.id);
-  const localSettings = getStoredSettings();
-
-  // Primary: Firestore products is the Source of Truth
-  let products: Product[];
-  if (fsProducts !== null) {
-    products = fsProducts;
-    // Keep server API in sync with Firestore
-    if (fsProducts.length > 0) {
-      fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ products: fsProducts }),
-      }).catch(() => {});
+    if (ordersSnap) {
+      fsOrders = [];
+      ordersSnap.forEach((d) => d.exists() && fsOrders!.push(d.data() as Order));
+      inMemoryOrders = [...fsOrders];
     }
-  } else if (apiProducts !== null && apiProducts.length > 0) {
-    products = apiProducts;
-  } else {
-    products = localProducts;
+    if (settingsDoc && settingsDoc.exists()) {
+      fsSettings = settingsDoc.data() as StoreSettings;
+    }
+  } catch (e) {
+    console.warn('Firestore fetch notice in fetchServerData:', e);
   }
 
-  // Sort descending by date
+  const products = fsProducts || inMemoryProducts || [];
   products.sort((a, b) => {
     const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
     const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
     return timeB - timeA;
   });
 
-  let orders: Order[];
-  if (fsOrders !== null) {
-    orders = fsOrders;
-  } else if (apiOrders !== null) {
-    orders = apiOrders;
-  } else {
-    orders = localOrders;
-  }
+  const orders = fsOrders || inMemoryOrders || [];
+  orders.sort((a, b) => {
+    const timeA = new Date(a.createdAt || 0).getTime();
+    const timeB = new Date(b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
 
-  let settings: StoreSettings;
-  if (fsSettings !== null || apiSettings !== null) {
-    settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings, apiSettings);
-  } else {
-    settings = mergeSettingsObjects(DEFAULT_SETTINGS, localSettings);
-  }
-
-  // Update local cache so it matches the authoritative state
-  try {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch (e) {}
+  const localSettings = getStoredSettings();
+  const settings = fsSettings ? mergeSettingsObjects(DEFAULT_SETTINGS, localSettings, fsSettings) : localSettings;
 
   return { products, orders, settings };
 }
 
-// Live real-time subscription for instant multi-device syncing with active Firestore listeners & atomic doc change listeners
+// Live real-time subscription for instant multi-device syncing with authoritative Firestore listeners
 export function subscribeToFirestore(
   onDataUpdate: (data: { products?: Product[]; orders?: Order[]; settings?: StoreSettings; newOrders?: Order[]; auditLogs?: AuditLogEntry[] }) => void,
   onError?: (errMessage: string) => void
 ) {
-  let lastServerVersion = 0;
-  let isPolling = false;
-
-  // Active in-memory atomic maps to prevent race conditions across browser instances
   const ordersMap = new Map<string, Order>();
   let hasInitialOrdersLoaded = false;
 
-  getStoredOrders().forEach((o) => {
+  inMemoryOrders.forEach((o) => {
     if (o && o.id) ordersMap.set(o.id, o);
   });
 
-  // Active Firestore onSnapshot listeners for instant broadcasting across clients
   let unsubFsProducts: (() => void) | null = null;
   let unsubFsOrders: (() => void) | null = null;
   let unsubFsSettings: (() => void) | null = null;
@@ -1204,10 +952,6 @@ export function subscribeToFirestore(
     unsubFsProducts = onSnapshot(
       collection(db, 'products'),
       (snapshot) => {
-        const docsCount = snapshot.size;
-        const docIds = snapshot.docs.map((d) => d.id);
-        console.log('[SNAPSHOT_RECEIVED]', { docsCount, docIds, fromCache: snapshot.metadata.fromCache });
-
         const products: Product[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as Product;
@@ -1222,11 +966,7 @@ export function subscribeToFirestore(
           return timeB - timeA;
         });
 
-        // Always update cache with the true Firestore state
-        try {
-          localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
-        } catch (e) {}
-
+        inMemoryProducts = products;
         onDataUpdate({ products });
       },
       (err) => {
@@ -1257,7 +997,6 @@ export function subscribeToFirestore(
           }
         });
 
-        // Prune any deleted orders
         for (const existingId of ordersMap.keys()) {
           if (!seenIds.has(existingId)) {
             ordersMap.delete(existingId);
@@ -1270,9 +1009,7 @@ export function subscribeToFirestore(
           (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
         );
 
-        try {
-          localStorage.setItem(ORDERS_KEY, JSON.stringify(fsOrds));
-        } catch (e) {}
+        inMemoryOrders = fsOrds;
         onDataUpdate({ orders: fsOrds, newOrders: newlyAddedOrders });
       },
       (err) => {
@@ -1308,7 +1045,6 @@ export function subscribeToFirestore(
     handleFirestoreError(e, OperationType.GET, 'settings/store_settings');
   }
 
-  // Live subscription to Audit Logs directly from Firestore
   try {
     const auditQuery = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(100));
     unsubFsAuditLogs = onSnapshot(
@@ -1330,77 +1066,8 @@ export function subscribeToFirestore(
     handleFirestoreError(e, OperationType.LIST, 'audit_logs');
   }
 
-  // Fast light-weight version check (sub-10ms endpoint check)
-  const pollServerVersion = async () => {
-    if (isPolling) return;
-    isPolling = true;
-    try {
-      const vRes = await fetch('/api/version?t=' + Date.now(), { cache: 'no-store' });
-      if (vRes.ok) {
-        const vData = await vRes.json();
-        if (vData && vData.version && vData.version !== lastServerVersion) {
-          lastServerVersion = vData.version;
-          const freshData = await fetchServerData();
-          if (freshData) {
-            const newlyAddedOrders: Order[] = [];
-            if (Array.isArray(freshData.orders)) {
-              freshData.orders.forEach((ord) => {
-                if (ord && ord.id && !ordersMap.has(ord.id)) {
-                  newlyAddedOrders.push(ord);
-                  ordersMap.set(ord.id, ord);
-                }
-              });
-            }
-            onDataUpdate({ ...freshData, newOrders: newlyAddedOrders.length > 0 ? newlyAddedOrders : undefined });
-          }
-        }
-      }
-    } catch (e) {
-    } finally {
-      isPolling = false;
-    }
-  };
-
-  // EventSource SSE real-time stream connection for instant sub-10ms server push
-  let eventSource: EventSource | null = null;
-  if (typeof window !== 'undefined' && 'EventSource' in window) {
-    try {
-      eventSource = new EventSource('/api/events');
-      eventSource.onmessage = async (e) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          if (parsed && parsed.type === 'DATA_UPDATED') {
-            const fresh = await fetchServerData();
-            if (fresh) {
-              const newlyAddedOrders: Order[] = [];
-              if (Array.isArray(fresh.orders)) {
-                fresh.orders.forEach((ord) => {
-                  if (ord && ord.id && !ordersMap.has(ord.id)) {
-                    newlyAddedOrders.push(ord);
-                    ordersMap.set(ord.id, ord);
-                  }
-                });
-              }
-              onDataUpdate({ ...fresh, newOrders: newlyAddedOrders.length > 0 ? newlyAddedOrders : undefined });
-            }
-          }
-        } catch (err) {}
-      };
-    } catch (e) {}
-  }
-
-  pollServerVersion();
-  const intervalId = setInterval(pollServerVersion, 1000);
-
-  const handleFocusOrVisible = () => {
-    pollServerVersion();
-  };
-
-  const handleCrossTabSync = async () => {
-    const freshData = await fetchServerData();
-    if (freshData) {
-      onDataUpdate(freshData);
-    }
+  const handleCrossTabSync = () => {
+    onDataUpdate({ products: [...inMemoryProducts], orders: [...inMemoryOrders] });
   };
 
   if (syncChannel) {
@@ -1411,26 +1078,7 @@ export function subscribeToFirestore(
     };
   }
 
-  const handleStorageChange = (e: StorageEvent) => {
-    if (e.key === PRODUCTS_KEY || e.key === ORDERS_KEY || e.key === SETTINGS_KEY) {
-      handleCrossTabSync();
-    }
-  };
-
-  window.addEventListener('focus', handleFocusOrVisible);
-  document.addEventListener('visibilitychange', handleFocusOrVisible);
-  window.addEventListener('storage', handleStorageChange);
-
   return () => {
-    clearInterval(intervalId);
-    if (eventSource) {
-      try {
-        eventSource.close();
-      } catch (e) {}
-    }
-    window.removeEventListener('focus', handleFocusOrVisible);
-    document.removeEventListener('visibilitychange', handleFocusOrVisible);
-    window.removeEventListener('storage', handleStorageChange);
     if (syncChannel) {
       syncChannel.onmessage = null;
     }
@@ -1628,25 +1276,16 @@ export function formatToman(amount: number): string {
 export async function checkProductStock(productId: string): Promise<Product | null> {
   const localProducts = getStoredProducts();
   const localProduct = localProducts.find((p) => p.id === productId) || null;
+  if (localProduct) return localProduct;
 
   try {
-    const fetchApiPromise = fetch('/api/data?t=' + Date.now(), { cache: 'no-store' }).then(async (res) => {
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.products)) {
-          return data.products.find((p: Product) => p.id === productId) || null;
-        }
-      }
-      return null;
-    });
-
-    const apiProduct = await withTimeout(fetchApiPromise, 1000).catch(() => null);
-    if (apiProduct) {
-      return apiProduct;
+    const snap = await getDoc(doc(db, 'products', productId));
+    if (snap.exists()) {
+      return snap.data() as Product;
     }
   } catch (e) {}
 
-  return localProduct;
+  return null;
 }
 
 export async function testTelegramNotification(settings: StoreSettings): Promise<{ success: boolean; message: string }> {
@@ -1670,8 +1309,6 @@ export async function testTelegramNotification(settings: StoreSettings): Promise
       ],
       totalPrice: formatToman(1500000),
       timestamp: new Date().toISOString(),
-      telegramToken: settings.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
-      chatId: settings.telegramChatId || '8574668861',
       webhookUrl: settings.telegramWebhookUrl
     };
 
@@ -1724,8 +1361,6 @@ export async function sendTelegramOrderNotification(order: Order, settings?: Sto
       totalPrice: formatToman(order.finalAmount),
       receiptUrl: order.paymentReceipt,
       timestamp: order.createdAt || new Date().toISOString(),
-      telegramToken: settings?.telegramBotToken || '8880696062:AAEqF5r7ZillJV8njxUGrbPyT9nQpAPES3M',
-      chatId: settings?.telegramChatId || '8574668861',
       webhookUrl: settings?.telegramWebhookUrl,
     };
 

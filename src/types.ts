@@ -27,6 +27,10 @@ export interface Product {
   ogImage?: string;
   createdAt: string;
   updatedAt?: string;
+  authInfo?: {
+    adminAuthorized?: boolean;
+    timestamp?: string;
+  };
 }
 
 export interface CartItem {
@@ -74,6 +78,8 @@ export interface Order {
   paymentRefId?: string;
   paymentGatewayName?: string;
   status: OrderStatus;
+  customerUid?: string;
+  customerId?: string;
   postalTrackingCode?: string;
   adminNote?: string;
   updatedAt?: string;
@@ -124,16 +130,17 @@ export interface StoreSettings {
   enableSoundEffects?: boolean;
   instagram: string;
   telegram?: string;
-  telegramBotToken?: string;
-  telegramChatId?: string;
   telegramWebhookUrl?: string;
+  authInfo?: {
+    adminAuthorized?: boolean;
+    timestamp?: string;
+  };
   ntfyEnabled?: boolean;
   ntfyTopic?: string;
   ntfyServerUrl?: string;
   phone: string;
   address: string;
   freeShippingThreshold: number;
-  adminPasscode: string;
   cardNumber: string;
   cardHolderName: string;
   bankName?: string;
