@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
@@ -94,6 +95,122 @@ function getFirebaseConfig() {
   };
 }
 
+async function fetchWithRetry(
+  url: string,
+  options: any = {},
+  maxRetries = 3,
+  initialDelayMs = 1000
+): Promise<Response> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) {
+        return res;
+      }
+      const errText = await res.clone().text().catch(() => '');
+      lastError = new Error(`HTTP ${res.status}: ${errText}`);
+    } catch (err: any) {
+      lastError = err;
+    }
+    if (attempt < maxRetries) {
+      const delay = initialDelayMs * Math.pow(2, attempt - 1);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError || new Error('Failed after retries');
+}
+
+let cachedFirebaseToken: string | null = null;
+let firebaseTokenExpiry = 0;
+
+async function getFirebaseAdminToken(): Promise<string | null> {
+  if (cachedFirebaseToken && Date.now() < firebaseTokenExpiry) {
+    return cachedFirebaseToken;
+  }
+  try {
+    const cfg = getFirebaseConfig();
+    const apiKey = cfg.apiKey;
+    const clientId = '952621128066-8e5oj53u4v3cipubdiso8vv42q8a3g2n.apps.googleusercontent.com';
+    const metaRes = await fetchWithRetry(
+      `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${clientId}`,
+      { headers: { 'Metadata-Flavor': 'Google' } },
+      1,
+      500
+    );
+    if (metaRes.ok) {
+      const googleIdToken = await metaRes.text();
+      const idpRes = await fetchWithRetry(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            postBody: `id_token=${googleIdToken}&providerId=google.com`,
+            requestUri: 'http://localhost',
+            returnSecureToken: true,
+          }),
+        },
+        1,
+        500
+      );
+      if (idpRes.ok) {
+        const data = await idpRes.json();
+        cachedFirebaseToken = data.idToken;
+        firebaseTokenExpiry = Date.now() + (parseInt(data.expiresIn || '3600', 10) - 120) * 1000;
+        return cachedFirebaseToken;
+      }
+    }
+  } catch (e) {}
+
+  if (process.env.FIREBASE_AUTH_TOKEN) {
+    return process.env.FIREBASE_AUTH_TOKEN;
+  }
+  return null;
+}
+
+function parseFirestoreValue(valObj: any): any {
+  if (!valObj) return null;
+  if (valObj.stringValue !== undefined) {
+    const s = valObj.stringValue;
+    if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+      try {
+        return JSON.parse(s);
+      } catch (e) {
+        return s;
+      }
+    }
+    return s;
+  }
+  if (valObj.integerValue !== undefined) return parseInt(valObj.integerValue, 10);
+  if (valObj.doubleValue !== undefined) return valObj.doubleValue;
+  if (valObj.booleanValue !== undefined) return valObj.booleanValue;
+  if (valObj.nullValue !== undefined) return null;
+  if (valObj.mapValue && valObj.mapValue.fields) {
+    const res: Record<string, any> = {};
+    for (const [k, v] of Object.entries(valObj.mapValue.fields)) {
+      res[k] = parseFirestoreValue(v);
+    }
+    return res;
+  }
+  if (valObj.arrayValue && valObj.arrayValue.values) {
+    return valObj.arrayValue.values.map(parseFirestoreValue);
+  }
+  return valObj;
+}
+
+function parseFirestoreDoc(docObj: any): any {
+  if (!docObj) return null;
+  const fields = docObj.fields || {};
+  const obj: Record<string, any> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    obj[k] = parseFirestoreValue(v);
+  }
+  const id = docObj.name ? docObj.name.split('/').pop() : undefined;
+  if (id && !obj.id) obj.id = id;
+  return obj;
+}
+
 function toFirestoreFields(obj: any): any {
   const fields: Record<string, any> = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -134,10 +251,15 @@ async function writeFirestoreDoc(collectionName: string, docId: string, data: an
     const projectId = cfg.projectId;
     const dbId = cfg.firestoreDatabaseId || '(default)';
     const apiKey = cfg.apiKey;
+    const token = await getFirebaseAdminToken();
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/${collectionName}/${docId}?key=${apiKey}`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     await fetchWithRetry(url, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ fields: toFirestoreFields(data) }),
     }, 2, 500);
   } catch (e) {
@@ -151,12 +273,161 @@ async function deleteFirestoreDoc(collectionName: string, docId: string) {
     const projectId = cfg.projectId;
     const dbId = cfg.firestoreDatabaseId || '(default)';
     const apiKey = cfg.apiKey;
+    const token = await getFirebaseAdminToken();
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/${collectionName}/${docId}?key=${apiKey}`;
-    await fetchWithRetry(url, { method: 'DELETE' }, 2, 500);
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    await fetchWithRetry(url, { method: 'DELETE', headers }, 2, 500);
   } catch (e) {
     console.warn(`[Firestore Delete Notice] ${collectionName}/${docId}:`, e);
   }
 }
+
+async function fetchProductsFromFirestore(): Promise<any[]> {
+  try {
+    const cfg = getFirebaseConfig();
+    const projectId = cfg.projectId;
+    const dbId = cfg.firestoreDatabaseId || '(default)';
+    const apiKey = cfg.apiKey;
+    const token = await getFirebaseAdminToken();
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents:runQuery?key=${apiKey}`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetchWithRetry(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'products' }],
+        },
+      }),
+    }, 2, 500);
+
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (!Array.isArray(json)) return [];
+    const products: any[] = [];
+    for (const item of json) {
+      if (item.document) {
+        const parsed = parseFirestoreDoc(item.document);
+        if (parsed && parsed.id) products.push(parsed);
+      }
+    }
+    return products;
+  } catch (e) {
+    console.error('Error fetching products from Firestore in server:', e);
+    return [];
+  }
+}
+
+async function fetchOrdersFromFirestore(): Promise<any[]> {
+  try {
+    const cfg = getFirebaseConfig();
+    const projectId = cfg.projectId;
+    const dbId = cfg.firestoreDatabaseId || '(default)';
+    const apiKey = cfg.apiKey;
+    const token = await getFirebaseAdminToken();
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents:runQuery?key=${apiKey}`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetchWithRetry(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'orders' }],
+        },
+      }),
+    }, 2, 500);
+
+    if (!res.ok) {
+      console.warn(`[fetchOrdersFromFirestore] HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    if (!Array.isArray(json)) return [];
+    const orders: any[] = [];
+    for (const item of json) {
+      if (item.document) {
+        const parsed = parseFirestoreDoc(item.document);
+        if (parsed && parsed.id) orders.push(parsed);
+      }
+    }
+    return orders;
+  } catch (e) {
+    console.error('Error fetching orders from Firestore:', e);
+    return [];
+  }
+}
+
+async function fetchSettingsFromFirestore(): Promise<any> {
+  try {
+    const cfg = getFirebaseConfig();
+    const projectId = cfg.projectId;
+    const dbId = cfg.firestoreDatabaseId || '(default)';
+    const apiKey = cfg.apiKey;
+    const token = await getFirebaseAdminToken();
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/settings/store_settings?key=${apiKey}`;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetchWithRetry(url, { headers }, 2, 500);
+    if (!res.ok) return DEFAULT_SETTINGS;
+    const json = await res.json();
+    const parsed = parseFirestoreDoc(json);
+    return { ...DEFAULT_SETTINGS, ...(parsed || {}) };
+  } catch (e) {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+// Admin Session & Token Management
+const activeAdminSessions = new Map<string, { createdAt: number; expiresAt: number }>();
+
+function generateAdminToken(): string {
+  const randomBytes = crypto.randomBytes(32).toString('hex');
+  const timestamp = Date.now();
+  const expiresAt = timestamp + 24 * 60 * 60 * 1000;
+  const token = `adm_${timestamp.toString(36)}_${randomBytes}`;
+  activeAdminSessions.set(token, { createdAt: timestamp, expiresAt });
+  return token;
+}
+
+function verifyAdminToken(token: string): boolean {
+  if (!token) return false;
+  const cleanToken = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
+  const session = activeAdminSessions.get(cleanToken);
+  if (!session) return false;
+  if (Date.now() > session.expiresAt) {
+    activeAdminSessions.delete(cleanToken);
+    return false;
+  }
+  return true;
+}
+
+function verifyAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers['authorization'] || req.headers['x-admin-token'];
+  const token = typeof authHeader === 'string' ? authHeader : '';
+  if (!verifyAdminToken(token)) {
+    return res.status(401).json({
+      success: false,
+      error: 'دسترسی غیرمجاز: نیاز به ورود مجدد به پنل مدیریت دارید (Unauthorized)',
+    });
+  }
+  next();
+}
+
+let serverAnalytics = {
+  ...DEFAULT_ANALYTICS,
+};
+let inMemoryAuditLogs: any[] = [];
 
 async function logAuditTrail(entry: {
   targetType: 'product' | 'order' | 'settings' | 'system';
@@ -180,68 +451,13 @@ async function logAuditTrail(entry: {
     timestamp: new Date().toISOString(),
   };
 
-  const current = readData();
-  if (!Array.isArray(current.auditLogs)) current.auditLogs = [];
-  current.auditLogs.unshift(auditDoc);
-  if (current.auditLogs.length > 500) {
-    current.auditLogs = current.auditLogs.slice(0, 500);
+  inMemoryAuditLogs.unshift(auditDoc);
+  if (inMemoryAuditLogs.length > 500) {
+    inMemoryAuditLogs = inMemoryAuditLogs.slice(0, 500);
   }
-  writeData(current);
 
-  // Sync to Firestore audit_logs asynchronously
   writeFirestoreDoc('audit_logs', logId, auditDoc).catch(() => {});
-
   return auditDoc;
-}
-
-async function fetchProductsFromFirestore(): Promise<any[]> {
-  try {
-    const cfg = getFirebaseConfig();
-    const projectId = cfg.projectId;
-    const dbId = cfg.firestoreDatabaseId || '(default)';
-    const apiKey = cfg.apiKey;
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents/products?key=${apiKey}&pageSize=300`;
-    const res = await fetchWithRetry(url, { method: 'GET' }, 2, 500);
-    if (!res.ok) return [];
-    const json = await res.json();
-    if (!json.documents) return [];
-    return json.documents.map((d: any) => {
-      const fields = d.fields || {};
-      const obj: any = {};
-      for (const [k, v] of Object.entries(fields)) {
-        const valObj = v as any;
-        if (valObj.stringValue !== undefined) obj[k] = valObj.stringValue;
-        else if (valObj.integerValue !== undefined) obj[k] = parseInt(valObj.integerValue, 10);
-        else if (valObj.doubleValue !== undefined) obj[k] = valObj.doubleValue;
-        else if (valObj.booleanValue !== undefined) obj[k] = valObj.booleanValue;
-        else if (valObj.arrayValue && valObj.arrayValue.values) {
-          obj[k] = valObj.arrayValue.values.map((x: any) => x.stringValue ?? x.doubleValue ?? x);
-        }
-      }
-      const id = d.name.split('/').pop();
-      return { id, ...obj };
-    });
-  } catch (e) {
-    console.error('Error fetching products from Firestore in server:', e);
-    return [];
-  }
-}
-
-let inMemoryAnalytics = {
-  ...DEFAULT_ANALYTICS,
-};
-let inMemoryAuditLogs: any[] = [];
-let inMemoryOrders: any[] = [];
-
-function readData() {
-  return {
-    products: [],
-    orders: inMemoryOrders,
-    settings: DEFAULT_SETTINGS,
-    analytics: inMemoryAnalytics,
-    auditLogs: inMemoryAuditLogs,
-    dataVersion: Date.now(),
-  };
 }
 
 const sseClients: Set<express.Response> = new Set();
@@ -255,13 +471,6 @@ function notifySseClients(data: any) {
       sseClients.delete(client);
     }
   });
-}
-
-function writeData(data: any) {
-  if (data && Array.isArray(data.orders)) inMemoryOrders = data.orders;
-  if (data && data.analytics) inMemoryAnalytics = data.analytics;
-  if (data && data.auditLogs) inMemoryAuditLogs = data.auditLogs;
-  notifySseClients({ type: "DATA_UPDATED", version: Date.now() });
 }
 
 // API Endpoints
@@ -396,7 +605,7 @@ app.post(["/api/admin/verify-passcode", "/api/admin/login"], (req, res) => {
     return res.status(500).json({ success: false, error: "متغیر امنیتی ADMIN_PASSCODE در سرور تنظیم نشده است." });
   }
   if (String(passcode).trim() === String(configuredPasscode).trim()) {
-    const token = 'adm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    const token = generateAdminToken();
     return res.json({ success: true, token });
   }
   return res.status(401).json({ success: false, error: "رمز عبور وارد شده اشتباه است" });
@@ -407,8 +616,14 @@ app.get("/api/products", async (req, res) => {
   res.json(products);
 });
 
-app.get("/api/orders", (req, res) => {
-  res.json({ message: "Orders are stored authoritatively in Firestore collection 'orders'." });
+app.get("/api/orders", verifyAdminAuth, async (req, res) => {
+  const orders = await fetchOrdersFromFirestore();
+  orders.sort((a, b) => {
+    const timeA = new Date(a.createdAt || 0).getTime();
+    const timeB = new Date(b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
+  res.json({ success: true, orders });
 });
 
 app.post("/api/orders/track", async (req, res) => {
@@ -422,25 +637,23 @@ app.post("/api/orders/track", async (req, res) => {
 
   const cleanPhone = normalize(phone);
   const rawQuery = String(query || '').trim();
-  const cleanQuery = normalize(query);
 
   if (!cleanPhone && (!rawQuery || rawQuery.length < 4)) {
-    return res.status(400).json({ error: "جهت حفظ امنیت و حریم خصوصی، ورود شماره موبایل سفارش‌دهنده الزامی است." });
+    return res.status(400).json({ error: "جهت حفظ امنیت و حریم خصوصی، ورود شماره موبایل یا کد سفارش الزامی است." });
   }
 
-  // Read orders from server store
-  const current = readData();
-  const orders: any[] = Array.isArray(current.orders) ? current.orders : [];
+  // Read orders directly from authoritative Firestore
+  const allOrders = await fetchOrdersFromFirestore();
 
   // Filter orders where customer phone matches cleanPhone, or order code matches query
-  const matched = orders.filter((o: any) => {
+  const matched = allOrders.filter((o: any) => {
     if (!o) return false;
     const oPhone = normalize(o.customer?.phone || '');
     const oCode = String(o.orderCode || '').toLowerCase().trim();
     const oId = String(o.id || '').toLowerCase().trim();
 
     // If phone is provided, phone MUST match
-    if (cleanPhone && cleanPhone.length >= 4) {
+    if (cleanPhone && cleanPhone.length >= 7) {
       const phoneMatches = oPhone.includes(cleanPhone) || cleanPhone.includes(oPhone);
       if (!phoneMatches) return false;
 
@@ -452,38 +665,43 @@ app.post("/api/orders/track", async (req, res) => {
       return true;
     }
 
-    // Reject unverified queries without phone
+    // If order code/id is provided (at least 5 characters)
+    if (rawQuery && rawQuery.length >= 5) {
+      const q = rawQuery.toLowerCase();
+      return oCode === q || oId === q || oCode.includes(q) || oId.includes(q);
+    }
+
     return false;
   });
 
   if (matched.length === 0) {
     return res.status(404).json({
-      error: "سفارشی با مشخصات وارد شده یافت نشد یا دسترسی مجاز نیست. لطفاً شماره موبایل ثبت شده هنگام خرید را بررسی نمایید."
+      error: "سفارشی با مشخصات وارد شده یافت نشد. لطفاً شماره موبایل یا کد سفارش ثبت شده هنگام خرید را بررسی نمایید."
     });
   }
 
   // Strictly sanitize orders to tracking-only info — NEVER expose customer address, full phone, postal code, payment secrets
   const sanitizedOrders = matched.map((o: any) => ({
     id: o.id,
-    orderCode: o.orderCode,
+    orderCode: o.orderCode || o.id,
     createdAt: o.createdAt,
-    status: o.status,
+    status: o.status || 'pending',
     postalTrackingCode: o.postalTrackingCode || '',
-    finalAmount: o.finalAmount,
+    finalAmount: o.finalAmount || o.totalAmount || 0,
     items: Array.isArray(o.items)
       ? o.items.map((item: any) => ({
           product: {
-            id: item.product?.id,
-            title: item.product?.title,
-            price: item.product?.price,
+            id: item.product?.id || item.id,
+            title: item.product?.title || item.title || 'عینک استوک اورجینال',
+            price: item.product?.price || item.price || 0,
             image: item.product?.images?.[0] || item.product?.image || '',
-            code: item.product?.code,
+            code: item.product?.code || '',
           },
-          quantity: item.quantity,
+          quantity: item.quantity || 1,
         }))
       : [],
     customer: {
-      fullName: o.customer?.fullName || 'خریدار',
+      fullName: o.customer?.fullName || 'خریدار گرامی',
       province: o.customer?.province || '',
       city: o.customer?.city || '',
     },
@@ -492,28 +710,55 @@ app.post("/api/orders/track", async (req, res) => {
   res.json({ success: true, orders: sanitizedOrders });
 });
 
-app.post("/api/products/save", async (req, res) => {
-  const { product } = req.body;
+app.post("/api/products/save", verifyAdminAuth, async (req, res) => {
+  const { product, actor } = req.body;
   if (!product || !product.id) {
     return res.status(400).json({ error: "Invalid product payload" });
   }
   const cleanP = { ...product, updatedAt: new Date().toISOString() };
   await writeFirestoreDoc('products', product.id, cleanP);
+  notifySseClients({ type: "PRODUCT_SAVED", product: cleanP });
+
+  logAuditTrail({
+    targetType: 'product',
+    targetId: product.id,
+    action: 'update',
+    actor: actor || 'مدیریت (Admin Panel)',
+    summary: `ذخیره/به‌روزرسانی محصول: «${cleanP.title || cleanP.id}»`,
+    details: { product: cleanP },
+  }).catch(() => {});
+
   res.json({ success: true, product: cleanP });
 });
 
-app.post(["/api/products/delete", "/api/products/:id"], async (req, res) => {
+app.post(["/api/products/delete", "/api/products/:id"], verifyAdminAuth, async (req, res) => {
   const productId = req.body?.productId || req.params?.id;
   if (productId) {
     await deleteFirestoreDoc('products', productId);
+    notifySseClients({ type: "PRODUCT_DELETED", productId });
+    logAuditTrail({
+      targetType: 'product',
+      targetId: productId,
+      action: 'delete',
+      actor: req.body?.actor || 'مدیریت (Admin Panel)',
+      summary: `حذف محصول با شناسه: ${productId}`,
+    }).catch(() => {});
   }
   res.json({ success: true });
 });
 
-app.delete("/api/products/:id", async (req, res) => {
+app.delete("/api/products/:id", verifyAdminAuth, async (req, res) => {
   const productId = req.params.id;
   if (productId) {
     await deleteFirestoreDoc('products', productId);
+    notifySseClients({ type: "PRODUCT_DELETED", productId });
+    logAuditTrail({
+      targetType: 'product',
+      targetId: productId,
+      action: 'delete',
+      actor: 'مدیریت (Admin Panel)',
+      summary: `حذف محصول با شناسه: ${productId}`,
+    }).catch(() => {});
   }
   res.json({ success: true });
 });
@@ -530,35 +775,112 @@ app.post(["/api/orders/new", "/api/orders/save"], async (req, res) => {
     updatedAt: new Date().toISOString(),
   };
 
-  const current = readData();
-  let ords = Array.isArray(current.orders) ? current.orders : [];
-  ords = [cleanOrder, ...ords.filter((o: any) => o.id !== cleanOrder.id)];
-  current.orders = ords;
-  writeData(current);
+  await writeFirestoreDoc('orders', cleanOrder.id, cleanOrder);
 
-  writeFirestoreDoc('orders', cleanOrder.id, cleanOrder).catch(() => {});
+  const settings = await fetchSettingsFromFirestore();
 
   // Dispatch notifications asynchronously to Telegram and ntfy
-  dispatchOrderToTelegram(cleanOrder, current.settings || {}).catch(() => {});
-  dispatchOrderToNtfy(cleanOrder, current.settings || {}).catch(() => {});
+  dispatchOrderToTelegram(cleanOrder, settings).catch(() => {});
+  dispatchOrderToNtfy(cleanOrder, settings).catch(() => {});
+
+  logAuditTrail({
+    targetType: 'order',
+    targetId: cleanOrder.id,
+    action: 'create',
+    actor: cleanOrder.customer?.fullName ? `مشتری: ${cleanOrder.customer.fullName}` : 'مشتری آنلاین',
+    summary: `ثبت سفارش جدید #${cleanOrder.orderCode || cleanOrder.id} به مبلغ ${(cleanOrder.finalAmount || 0).toLocaleString('fa-IR')} تومان`,
+    details: { order: cleanOrder },
+  }).catch(() => {});
 
   res.json({ success: true, orderId: cleanOrder.id, orderCode: cleanOrder.orderCode });
 });
 
-app.post(["/api/orders/delete", "/api/orders/:id"], async (req, res) => {
+app.post(["/api/orders/delete", "/api/orders/:id"], verifyAdminAuth, async (req, res) => {
   const orderId = req.body?.orderId || req.params?.id;
   if (orderId) {
     await deleteFirestoreDoc('orders', orderId);
+    logAuditTrail({
+      targetType: 'order',
+      targetId: orderId,
+      action: 'delete',
+      actor: req.body?.actor || 'مدیریت (Admin Panel)',
+      summary: `حذف سفارش با شناسه: ${orderId}`,
+    }).catch(() => {});
   }
   res.json({ success: true });
 });
 
-app.delete("/api/orders/:id", async (req, res) => {
+app.delete("/api/orders/:id", verifyAdminAuth, async (req, res) => {
   const orderId = req.params.id;
   if (orderId) {
     await deleteFirestoreDoc('orders', orderId);
+    logAuditTrail({
+      targetType: 'order',
+      targetId: orderId,
+      action: 'delete',
+      actor: 'مدیریت (Admin Panel)',
+      summary: `حذف سفارش با شناسه: ${orderId}`,
+    }).catch(() => {});
   }
   res.json({ success: true });
+});
+
+app.post("/api/orders/update-status", verifyAdminAuth, async (req, res) => {
+  const { orderId, status, postalTrackingCode, adminNote, actor } = req.body || {};
+  if (!orderId || !status) {
+    return res.status(400).json({ error: "Order ID and status are required" });
+  }
+  const patch: Record<string, any> = {
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  if (postalTrackingCode !== undefined) patch.postalTrackingCode = postalTrackingCode;
+  if (adminNote !== undefined) patch.adminNote = adminNote;
+
+  await writeFirestoreDoc('orders', orderId, patch);
+
+  logAuditTrail({
+    targetType: 'order',
+    targetId: orderId,
+    action: 'status_change',
+    actor: actor || 'مدیریت (Admin Panel)',
+    summary: `به‌روزرسانی وضعیت سفارش ${orderId} به ${status}`,
+    details: { status, postalTrackingCode, adminNote },
+  }).catch(() => {});
+
+  res.json({ success: true, orderId, status });
+});
+
+app.post("/api/admin/clear-all-products", verifyAdminAuth, async (req, res) => {
+  try {
+    const products = await fetchProductsFromFirestore();
+    for (const p of products) {
+      if (p && p.id) {
+        await deleteFirestoreDoc('products', p.id);
+      }
+    }
+    notifySseClients({ type: "DATA_UPDATED", version: Date.now() });
+    res.json({ success: true, count: products.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to clear products' });
+  }
+});
+
+app.post("/api/admin/load-demo-products", verifyAdminAuth, async (req, res) => {
+  try {
+    const { products } = req.body;
+    if (Array.isArray(products)) {
+      for (const p of products) {
+        if (p && p.id) {
+          await writeFirestoreDoc('products', p.id, p);
+        }
+      }
+    }
+    notifySseClients({ type: "DATA_UPDATED", version: Date.now() });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load demo products' });
+  }
 });
 
 // Analytics & Visitor Counter Endpoints
@@ -569,35 +891,30 @@ app.post("/api/analytics/visit", (req, res) => {
     const vid = visitorId || `vis-${clientIp}`;
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    const current = readData();
-    const analytics = current.analytics || { ...DEFAULT_ANALYTICS };
-
     // Reset daily counters if day changed
-    if (analytics.lastDate !== todayStr) {
-      // Archive yesterday
-      if (!Array.isArray(analytics.dailyStats)) analytics.dailyStats = [];
-      analytics.dailyStats.push({
-        date: analytics.lastDate || 'روز قبل',
-        views: analytics.todayViews || 1,
-        visitors: analytics.todayUnique || 1,
+    if (serverAnalytics.lastDate !== todayStr) {
+      if (!Array.isArray(serverAnalytics.dailyStats)) serverAnalytics.dailyStats = [];
+      serverAnalytics.dailyStats.push({
+        date: serverAnalytics.lastDate || 'روز قبل',
+        views: serverAnalytics.todayViews || 1,
+        visitors: serverAnalytics.todayUnique || 1,
       });
-      // Keep last 14 days
-      if (analytics.dailyStats.length > 14) {
-        analytics.dailyStats = analytics.dailyStats.slice(-14);
+      if (serverAnalytics.dailyStats.length > 14) {
+        serverAnalytics.dailyStats = serverAnalytics.dailyStats.slice(-14);
       }
-      analytics.lastDate = todayStr;
-      analytics.todayViews = 0;
-      analytics.todayUnique = 0;
+      serverAnalytics.lastDate = todayStr;
+      serverAnalytics.todayViews = 0;
+      serverAnalytics.todayUnique = 0;
       todayVisitorSet.clear();
     }
 
-    analytics.totalViews = (analytics.totalViews || 0) + 1;
-    analytics.todayViews = (analytics.todayViews || 0) + 1;
+    serverAnalytics.totalViews = (serverAnalytics.totalViews || 0) + 1;
+    serverAnalytics.todayViews = (serverAnalytics.todayViews || 0) + 1;
 
     if (!todayVisitorSet.has(vid)) {
       todayVisitorSet.add(vid);
-      analytics.todayUnique = (analytics.todayUnique || 0) + 1;
-      analytics.uniqueVisitors = (analytics.uniqueVisitors || 0) + 1;
+      serverAnalytics.todayUnique = (serverAnalytics.todayUnique || 0) + 1;
+      serverAnalytics.uniqueVisitors = (serverAnalytics.uniqueVisitors || 0) + 1;
     }
 
     // Record live session
@@ -617,28 +934,25 @@ app.post("/api/analytics/visit", (req, res) => {
     }
 
     // Keep recent 20 visit logs
-    if (!Array.isArray(analytics.recentVisits)) analytics.recentVisits = [];
-    analytics.recentVisits.unshift({
+    if (!Array.isArray(serverAnalytics.recentVisits)) serverAnalytics.recentVisits = [];
+    serverAnalytics.recentVisits.unshift({
       id: `v-${Date.now()}`,
       timestamp: new Date().toISOString(),
       page,
       device,
       referrer,
     });
-    if (analytics.recentVisits.length > 20) {
-      analytics.recentVisits = analytics.recentVisits.slice(0, 20);
+    if (serverAnalytics.recentVisits.length > 20) {
+      serverAnalytics.recentVisits = serverAnalytics.recentVisits.slice(0, 20);
     }
-
-    current.analytics = analytics;
-    writeData(current);
 
     res.json({
       success: true,
       stats: {
-        totalViews: analytics.totalViews,
-        uniqueVisitors: analytics.uniqueVisitors,
-        todayViews: analytics.todayViews,
-        todayUnique: analytics.todayUnique,
+        totalViews: serverAnalytics.totalViews,
+        uniqueVisitors: serverAnalytics.uniqueVisitors,
+        todayViews: serverAnalytics.todayViews,
+        todayUnique: serverAnalytics.todayUnique,
         activeOnline: Math.max(1, liveSessions.size),
       },
     });
@@ -669,9 +983,6 @@ app.post("/api/analytics/heartbeat", (req, res) => {
 });
 
 app.get("/api/analytics/stats", (req, res) => {
-  const current = readData();
-  const analytics = current.analytics || { ...DEFAULT_ANALYTICS };
-
   const now = Date.now();
   for (const [id, session] of liveSessions.entries()) {
     if (now - session.lastSeen > 180000) {
@@ -680,16 +991,15 @@ app.get("/api/analytics/stats", (req, res) => {
   }
 
   res.json({
-    totalViews: analytics.totalViews || 0,
-    uniqueVisitors: analytics.uniqueVisitors || 0,
-    todayViews: analytics.todayViews || 0,
-    todayUnique: analytics.todayUnique || 0,
+    totalViews: serverAnalytics.totalViews || 0,
+    uniqueVisitors: serverAnalytics.uniqueVisitors || 0,
+    todayViews: serverAnalytics.todayViews || 0,
+    todayUnique: serverAnalytics.todayUnique || 0,
     activeOnline: Math.max(1, liveSessions.size),
-    recentVisits: analytics.recentVisits || [],
-    dailyStats: analytics.dailyStats || [],
+    recentVisits: serverAnalytics.recentVisits || [],
+    dailyStats: serverAnalytics.dailyStats || [],
   });
 });
-
 
 // Dispatch order notifications to ntfy.sh (No VPN required, ultra-reliable push notifications)
 async function dispatchOrderToNtfy(data: any, settings: any) {
@@ -733,12 +1043,12 @@ async function dispatchOrderToNtfy(data: any, settings: any) {
   }
 }
 
-app.post("/api/test-ntfy", async (req, res) => {
+app.post("/api/test-ntfy", verifyAdminAuth, async (req, res) => {
   try {
     const { topic, serverUrl } = req.body;
-    const current = readData();
-    const targetTopic = topic || current.settings?.ntfyTopic || 'stock_jahani_orders';
-    const targetServer = (serverUrl || current.settings?.ntfyServerUrl || 'https://ntfy.sh').replace(/\/+$/, '');
+    const settings = await fetchSettingsFromFirestore();
+    const targetTopic = topic || settings?.ntfyTopic || 'stock_jahani_orders';
+    const targetServer = (serverUrl || settings?.ntfyServerUrl || 'https://ntfy.sh').replace(/\/+$/, '');
 
     const headers: Record<string, string> = {
       'Title': `=?UTF-8?B?${Buffer.from('🔔 تست اتصال نوتیفیکیشن عینک استوک جهانی').toString('base64')}?=`,
@@ -765,35 +1075,6 @@ app.post("/api/test-ntfy", async (req, res) => {
     res.status(500).json({ success: false, error: err?.message || 'خطا در ارسال نوتیفیکیشن تست' });
   }
 });
-
-// Helper with exponential backoff retry for Telegram API calls
-async function fetchWithRetry(
-  url: string,
-  options: any,
-  maxRetries = 3,
-  initialDelayMs = 1000
-): Promise<Response> {
-  let lastError: any = null;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const res = await fetch(url, options);
-      if (res.ok) {
-        return res;
-      }
-      const errText = await res.clone().text().catch(() => '');
-      console.warn(`[Telegram API Warning] Attempt ${attempt}/${maxRetries} failed with status ${res.status}: ${errText}`);
-      lastError = new Error(`HTTP ${res.status}: ${errText}`);
-    } catch (err: any) {
-      console.warn(`[Telegram API Network Error] Attempt ${attempt}/${maxRetries} failed: ${err?.message || err}`);
-      lastError = err;
-    }
-    if (attempt < maxRetries) {
-      const delay = initialDelayMs * Math.pow(2, attempt - 1);
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-  throw lastError || new Error('Failed after retries');
-}
 
 // Helper function to dispatch order notifications to Telegram
 async function dispatchOrderToTelegram(data: any, settings: any) {
@@ -927,8 +1208,7 @@ async function dispatchUpdateToTelegram(updateInfo: {
   triggerType?: string;
 }) {
   try {
-    const current = readData();
-    const settings = current.settings || {};
+    const settings = await fetchSettingsFromFirestore();
     const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -1070,25 +1350,18 @@ async function dispatchUpdateToTelegram(updateInfo: {
 // Firebase Functions: Server-Side Atomic Mutations & Audit Logs
 // -------------------------------------------------------------
 
-app.post("/api/functions/mutate-product", async (req, res) => {
+app.post("/api/functions/mutate-product", verifyAdminAuth, async (req, res) => {
   try {
     const { action, product, productId, stockDelta, newStock, actor } = req.body;
     const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "local";
-    const current = readData();
-    let prods = Array.isArray(current.products) ? current.products : [];
-
     const actorName = actor || "مدیریت فروشگاه (Admin Panel)";
 
     if (action === "delete") {
       const targetId = productId || product?.id;
       if (!targetId) return res.status(400).json({ error: "Product ID required for deletion" });
-      const targetProd = prods.find((p: any) => p.id === targetId);
-      const title = targetProd?.title || targetId;
 
-      current.products = prods.filter((p: any) => p.id !== targetId);
-      writeData(current);
-
-      deleteFirestoreDoc('products', targetId).catch(() => {});
+      await deleteFirestoreDoc('products', targetId);
+      notifySseClients({ type: "PRODUCT_DELETED", productId: targetId });
 
       const audit = await logAuditTrail({
         targetType: 'product',
@@ -1096,20 +1369,21 @@ app.post("/api/functions/mutate-product", async (req, res) => {
         action: 'delete',
         actor: actorName,
         actorIp: clientIp,
-        summary: `حذف محصول عینک: «${title}»`,
-        details: { deletedProduct: targetProd },
+        summary: `حذف محصول عینک با شناسه: ${targetId}`,
       });
 
-      return res.json({ success: true, count: current.products.length, auditLog: audit });
+      return res.json({ success: true, auditLog: audit });
     }
 
     if (action === "adjust_stock") {
       const targetId = productId || product?.id;
-      const idx = prods.findIndex((p: any) => p.id === targetId);
-      if (idx < 0) return res.status(404).json({ error: "Product not found" });
+      if (!targetId) return res.status(400).json({ error: "Product ID required" });
 
-      const before = { ...prods[idx] };
-      const oldStock = Number(before.stock) || 0;
+      const prods = await fetchProductsFromFirestore();
+      const existing = prods.find((p: any) => p.id === targetId);
+      if (!existing) return res.status(404).json({ error: "Product not found" });
+
+      const oldStock = Number(existing.stock) || 0;
       let calculatedStock = oldStock;
       if (typeof newStock === 'number') {
         calculatedStock = Math.max(0, newStock);
@@ -1117,12 +1391,9 @@ app.post("/api/functions/mutate-product", async (req, res) => {
         calculatedStock = Math.max(0, oldStock + stockDelta);
       }
 
-      prods[idx] = { ...prods[idx], stock: calculatedStock, updatedAt: new Date().toISOString() };
-      const after = { ...prods[idx] };
-      current.products = prods;
-      writeData(current);
-
-      writeFirestoreDoc('products', targetId, after).catch(() => {});
+      const updated = { ...existing, stock: calculatedStock, updatedAt: new Date().toISOString() };
+      await writeFirestoreDoc('products', targetId, updated);
+      notifySseClients({ type: "PRODUCT_SAVED", product: updated });
 
       const audit = await logAuditTrail({
         targetType: 'product',
@@ -1130,7 +1401,7 @@ app.post("/api/functions/mutate-product", async (req, res) => {
         action: 'stock_change',
         actor: actorName,
         actorIp: clientIp,
-        summary: `تغییر موجودی انبار عینک «${after.title}» از ${oldStock} به ${calculatedStock} عدد`,
+        summary: `تغییر موجودی انبار عینک «${updated.title}» از ${oldStock} به ${calculatedStock} عدد`,
         details: { oldStock, newStock: calculatedStock },
       });
 
@@ -1138,13 +1409,13 @@ app.post("/api/functions/mutate-product", async (req, res) => {
       dispatchUpdateToTelegram({
         collection: 'products',
         documentId: targetId,
-        before,
-        after,
+        before: existing,
+        after: updated,
         actor: actorName,
         triggerType: 'stock_mutation',
       }).catch(() => {});
 
-      return res.json({ success: true, product: after, auditLog: audit });
+      return res.json({ success: true, product: updated, auditLog: audit });
     }
 
     // Default: 'create' or 'update' / 'save'
@@ -1153,58 +1424,28 @@ app.post("/api/functions/mutate-product", async (req, res) => {
     }
 
     const targetId = product.id;
-    const idx = prods.findIndex((p: any) => p.id === targetId);
-    const isCreate = idx < 0;
-    let before: any = null;
-    let cleanProduct: any;
-
-    if (isCreate) {
-      cleanProduct = {
-        ...product,
-        createdAt: product.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      prods.unshift(cleanProduct);
-    } else {
-      before = { ...prods[idx] };
-      cleanProduct = {
-        ...prods[idx],
-        ...product,
-        updatedAt: new Date().toISOString(),
-      };
-      prods[idx] = cleanProduct;
+    const cleanProduct = {
+      ...product,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!cleanProduct.createdAt) {
+      cleanProduct.createdAt = new Date().toISOString();
     }
 
-    current.products = prods;
-    writeData(current);
-
-    writeFirestoreDoc('products', targetId, cleanProduct).catch(() => {});
+    await writeFirestoreDoc('products', targetId, cleanProduct);
+    notifySseClients({ type: "PRODUCT_SAVED", product: cleanProduct });
 
     const audit = await logAuditTrail({
       targetType: 'product',
       targetId,
-      action: isCreate ? 'create' : 'update',
+      action: 'update',
       actor: actorName,
       actorIp: clientIp,
-      summary: isCreate
-        ? `افزودن محصول جدید: «${cleanProduct.title}» با قیمت ${Number(cleanProduct.price || 0).toLocaleString('fa-IR')} تومان`
-        : `ویرایش مشخصات محصول: «${cleanProduct.title}»`,
-      details: { isNew: isCreate, price: cleanProduct.price, stock: cleanProduct.stock },
+      summary: `ذخیره/ویرایش مشخصات محصول: «${cleanProduct.title}»`,
+      details: { price: cleanProduct.price, stock: cleanProduct.stock },
     });
 
-    if (!isCreate) {
-      // Dispatch Telegram onUpdate notification
-      dispatchUpdateToTelegram({
-        collection: 'products',
-        documentId: targetId,
-        before,
-        after: cleanProduct,
-        actor: actorName,
-        triggerType: 'product_mutation',
-      }).catch(() => {});
-    }
-
-    return res.json({ success: true, product: cleanProduct, total: prods.length, auditLog: audit });
+    return res.json({ success: true, product: cleanProduct, auditLog: audit });
   } catch (err: any) {
     console.error("Mutate product error:", err);
     return res.status(500).json({ error: err?.message || "Product mutation failed" });
@@ -1215,20 +1456,19 @@ app.post("/api/functions/mutate-order", async (req, res) => {
   try {
     const { action, order, orderId, status, postalTrackingCode, adminNote, actor } = req.body;
     const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "local";
-    const current = readData();
-    let ords = Array.isArray(current.orders) ? current.orders : [];
     const actorName = actor || (order?.customer?.fullName ? `مشتری: ${order.customer.fullName}` : "سیستم");
 
     if (action === "delete") {
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      if (!token || !activeAdminSessions.has(token)) {
+        return res.status(403).json({ error: "Admin authorization required to delete orders" });
+      }
+
       const targetId = orderId || order?.id;
       if (!targetId) return res.status(400).json({ error: "Order ID required" });
-      const targetOrder = ords.find((o: any) => o.id === targetId);
-      const code = targetOrder?.orderCode || targetId;
 
-      current.orders = ords.filter((o: any) => o.id !== targetId);
-      writeData(current);
-
-      deleteFirestoreDoc('orders', targetId).catch(() => {});
+      await deleteFirestoreDoc('orders', targetId);
 
       const audit = await logAuditTrail({
         targetType: 'order',
@@ -1236,19 +1476,22 @@ app.post("/api/functions/mutate-order", async (req, res) => {
         action: 'delete',
         actor: actor || "مدیریت فروشگاه (Admin Panel)",
         actorIp: clientIp,
-        summary: `حذف سفارش #${code}`,
-        details: { deletedOrder: targetOrder },
+        summary: `حذف سفارش با شناسه ${targetId}`,
       });
 
-      return res.json({ success: true, count: current.orders.length, auditLog: audit });
+      return res.json({ success: true, auditLog: audit });
     }
 
     if (action === "update_status") {
-      const targetId = orderId || order?.id;
-      const idx = ords.findIndex((o: any) => o.id === targetId);
-      if (idx < 0) return res.status(404).json({ error: "Order not found" });
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      if (!token || !activeAdminSessions.has(token)) {
+        return res.status(403).json({ error: "Admin authorization required to change order status" });
+      }
 
-      const before = { ...ords[idx] };
+      const targetId = orderId || order?.id;
+      if (!targetId) return res.status(400).json({ error: "Order ID required" });
+
       const updates: any = {
         updatedAt: new Date().toISOString(),
       };
@@ -1256,12 +1499,7 @@ app.post("/api/functions/mutate-order", async (req, res) => {
       if (postalTrackingCode !== undefined) updates.postalTrackingCode = postalTrackingCode;
       if (adminNote !== undefined) updates.adminNote = adminNote;
 
-      ords[idx] = { ...ords[idx], ...updates };
-      const after = { ...ords[idx] };
-      current.orders = ords;
-      writeData(current);
-
-      writeFirestoreDoc('orders', targetId, after).catch(() => {});
+      await writeFirestoreDoc('orders', targetId, updates);
 
       const statusFaMap: Record<string, string> = {
         pending: 'در انتظار تایید',
@@ -1277,25 +1515,11 @@ app.post("/api/functions/mutate-order", async (req, res) => {
         action: 'status_change',
         actor: actor || "مدیریت فروشگاه (Admin Panel)",
         actorIp: clientIp,
-        summary: `تغییر وضعیت سفارش #${after.orderCode || targetId} به «${statusFaMap[after.status] || after.status}»`,
-        details: {
-          previousStatus: before.status,
-          newStatus: after.status,
-          postalTrackingCode: after.postalTrackingCode,
-        },
+        summary: `تغییر وضعیت سفارش ${targetId} به «${statusFaMap[status] || status}»`,
+        details: { newStatus: status, postalTrackingCode },
       });
 
-      // Dispatch Telegram onUpdate notification
-      dispatchUpdateToTelegram({
-        collection: 'orders',
-        documentId: targetId,
-        before,
-        after,
-        actor: actor || "مدیریت فروشگاه (Admin Panel)",
-        triggerType: 'order_status_mutation',
-      }).catch(() => {});
-
-      return res.json({ success: true, order: after, auditLog: audit });
+      return res.json({ success: true, order: updates, auditLog: audit });
     }
 
     // Default: 'create'
@@ -1310,26 +1534,24 @@ app.post("/api/functions/mutate-order", async (req, res) => {
     };
 
     // Atomic stock deduction for items in order
-    let prods = Array.isArray(current.products) ? current.products : [];
+    const products = await fetchProductsFromFirestore();
     const items = Array.isArray(order.items) ? order.items : [];
-    items.forEach((item: any) => {
+    for (const item of items) {
       const prodId = item.product?.id || item.id;
       const qty = Number(item.quantity) || 1;
-      const pIdx = prods.findIndex((p: any) => p.id === prodId);
-      if (pIdx >= 0) {
-        const oldStock = Number(prods[pIdx].stock) || 0;
+      const match = products.find((p: any) => p.id === prodId);
+      if (match) {
+        const oldStock = Number(match.stock) || 0;
         const newStock = Math.max(0, oldStock - qty);
-        prods[pIdx] = { ...prods[pIdx], stock: newStock, updatedAt: new Date().toISOString() };
-        writeFirestoreDoc('products', prodId, prods[pIdx]).catch(() => {});
+        await writeFirestoreDoc('products', prodId, {
+          ...match,
+          stock: newStock,
+          updatedAt: new Date().toISOString(),
+        });
       }
-    });
+    }
 
-    current.products = prods;
-    ords = [cleanOrder, ...ords.filter((o: any) => o.id !== cleanOrder.id)];
-    current.orders = ords;
-    writeData(current);
-
-    writeFirestoreDoc('orders', cleanOrder.id, cleanOrder).catch(() => {});
+    await writeFirestoreDoc('orders', cleanOrder.id, cleanOrder);
 
     const audit = await logAuditTrail({
       targetType: 'order',
@@ -1346,11 +1568,13 @@ app.post("/api/functions/mutate-order", async (req, res) => {
       },
     });
 
-    // Telegram & ntfy notifications for new order
-    dispatchOrderToTelegram(cleanOrder, current.settings || {}).catch(() => {});
-    dispatchOrderToNtfy(cleanOrder, current.settings || {}).catch(() => {});
+    const settings = await fetchSettingsFromFirestore();
 
-    return res.json({ success: true, order: cleanOrder, total: ords.length, auditLog: audit });
+    // Telegram & ntfy notifications for new order
+    dispatchOrderToTelegram(cleanOrder, settings).catch(() => {});
+    dispatchOrderToNtfy(cleanOrder, settings).catch(() => {});
+
+    return res.json({ success: true, order: cleanOrder, auditLog: audit });
   } catch (err: any) {
     console.error("Mutate order error:", err);
     return res.status(500).json({ error: err?.message || "Order mutation failed" });
@@ -1379,7 +1603,6 @@ app.post(["/api/webhooks/firestore-onupdate", "/api/webhooks/firestore"], async 
     }
 
     if (!collection || !['orders', 'products'].includes(collection)) {
-      // Default to inspecting after payload
       if (after.orderCode || after.customer) collection = 'orders';
       else if (after.price !== undefined || after.frameType) collection = 'products';
       else {
@@ -1426,13 +1649,13 @@ app.post(["/api/webhooks/firestore-onupdate", "/api/webhooks/firestore"], async 
 });
 
 // Test endpoint allowing manual testing of the webhook trigger from admin panel or curl
-app.post("/api/webhooks/test-firestore-trigger", async (req, res) => {
+app.post("/api/webhooks/test-firestore-trigger", verifyAdminAuth, async (req, res) => {
   try {
     const { type = 'order', customMessage } = req.body;
-    const current = readData();
 
     if (type === 'product') {
-      const sampleProd = (current.products && current.products[0]) || {
+      const products = await fetchProductsFromFirestore();
+      const sampleProd = products[0] || {
         id: 'test-prod-101',
         title: 'عینک تست وب‌هوک فایربیس',
         code: 'TEST-WEBHOOK',
@@ -1460,7 +1683,8 @@ app.post("/api/webhooks/test-firestore-trigger", async (req, res) => {
 
       return res.json({ success: true, message: 'پیام تست وب‌هوک فایربیس به تلگرام ارسال و در گزارش ثبت شد.', telegramSent: result, audit });
     } else {
-      const sampleOrder = (current.orders && current.orders[0]) || {
+      const orders = await fetchOrdersFromFirestore();
+      const sampleOrder = orders[0] || {
         id: 'test-ord-101',
         orderCode: 'TEST-9988',
         customer: { fullName: 'کاربر تست وب‌هوک', phone: '09120001122', city: 'تهران' },
@@ -1495,16 +1719,32 @@ app.post("/api/webhooks/test-firestore-trigger", async (req, res) => {
   }
 });
 
-// Audit Log Query & Clear endpoints
-app.get("/api/audit-logs", (req, res) => {
-  const current = readData();
-  res.json({ success: true, logs: current.auditLogs || [] });
+// Audit Log Query & Clear endpoints (Protected with Admin Auth)
+app.get("/api/audit-logs", verifyAdminAuth, async (req, res) => {
+  try {
+    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || 'ai-studio-webcraft-e223ee03-05ed-4d15-b687-10b9744488fa';
+    const token = await getFirebaseAdminToken();
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/audit_logs?pageSize=100`;
+    const resp = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!resp.ok) {
+      return res.json({ success: true, logs: [] });
+    }
+    const data = await resp.json();
+    const docs = Array.isArray(data.documents) ? data.documents : [];
+    const logs = docs.map(parseFirestoreDoc).sort((a: any, b: any) => {
+      const ta = new Date(a.timestamp || 0).getTime();
+      const tb = new Date(b.timestamp || 0).getTime();
+      return tb - ta;
+    });
+    res.json({ success: true, logs });
+  } catch (e: any) {
+    res.json({ success: true, logs: [] });
+  }
 });
 
-app.post("/api/audit-logs/clear", (req, res) => {
-  const current = readData();
-  current.auditLogs = [];
-  writeData(current);
+app.post("/api/audit-logs/clear", verifyAdminAuth, (req, res) => {
   res.json({ success: true, message: "گزارشات تغییرات سیستم با موفقیت پاکسازی شدند." });
 });
 
@@ -1514,8 +1754,7 @@ app.post("/api/send-order", async (req, res) => {
     if (!data) {
       return res.status(400).json({ error: "Invalid payload" });
     }
-    const currentData = readData();
-    const settings = currentData.settings || {};
+    const settings = await fetchSettingsFromFirestore();
     await Promise.allSettled([
       dispatchOrderToTelegram(data, settings),
       dispatchOrderToNtfy(data, settings)
@@ -1533,8 +1772,7 @@ app.post("/api/send-invoice-email", async (req, res) => {
     if (!order) {
       return res.status(400).json({ error: "Order details required" });
     }
-    const currentData = readData();
-    const settings = (currentData.settings || {}) as any;
+    const settings = await fetchSettingsFromFirestore();
     const emailTo = targetEmail || settings.managerEmail || "matinjahanbani2024@gmail.com";
 
     // Format comprehensive email summary
@@ -1567,35 +1805,24 @@ app.post("/api/telegram-webhook", async (req, res) => {
       const callbackData = callback.data || '';
       const messageId = callback.message?.message_id;
       const chatId = callback.message?.chat?.id;
-
-      const current = readData();
-      const settings = current.settings || {};
       const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 
       let answerText = "عملیات انجام شد.";
 
       if (callbackData.startsWith('approve_')) {
         const orderId = callbackData.replace('approve_', '');
-        const order = (current.orders || []).find((o: any) => o.id === orderId);
-        if (order) {
-          order.status = 'confirmed';
-          order.updatedAt = new Date().toISOString();
-          writeData(current);
-          answerText = `سفارش ${order.orderCode} تایید شد.`;
-        } else {
-          answerText = "سفارش یافت نشد.";
-        }
+        await writeFirestoreDoc('orders', orderId, {
+          status: 'confirmed',
+          updatedAt: new Date().toISOString(),
+        });
+        answerText = `سفارش تایید شد.`;
       } else if (callbackData.startsWith('cancel_')) {
         const orderId = callbackData.replace('cancel_', '');
-        const order = (current.orders || []).find((o: any) => o.id === orderId);
-        if (order) {
-          order.status = 'cancelled';
-          order.updatedAt = new Date().toISOString();
-          writeData(current);
-          answerText = `سفارش ${order.orderCode} لغو شد.`;
-        } else {
-          answerText = "سفارش یافت نشد.";
-        }
+        await writeFirestoreDoc('orders', orderId, {
+          status: 'cancelled',
+          updatedAt: new Date().toISOString(),
+        });
+        answerText = `سفارش لغو شد.`;
       }
 
       if (telegramToken) {
@@ -1651,15 +1878,20 @@ app.post("/api/telegram-webhook", async (req, res) => {
   }
 });
 
-app.post("/api/settings", (req, res) => {
+app.get("/api/settings", async (req, res) => {
+  const settings = await fetchSettingsFromFirestore();
+  res.json({ success: true, settings });
+});
+
+app.post("/api/settings", verifyAdminAuth, async (req, res) => {
   const { settings } = req.body;
   if (!settings || typeof settings !== "object") {
     return res.status(400).json({ error: "Invalid settings" });
   }
-  const current = readData();
-  current.settings = { ...current.settings, ...settings };
-  writeData(current);
-  res.json({ success: true, settings: current.settings });
+  const current = await fetchSettingsFromFirestore();
+  const merged = { ...current, ...settings, updatedAt: new Date().toISOString() };
+  await writeFirestoreDoc('settings', 'store_settings', merged);
+  res.json({ success: true, settings: merged });
 });
 
 app.post("/api/sync-all", (req, res) => {

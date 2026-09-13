@@ -49,6 +49,27 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
+// Secure Admin session token helpers
+export function getAdminToken(): string {
+  if (typeof window !== 'undefined') {
+    return sessionStorage.getItem('admin_auth_token') || '';
+  }
+  return '';
+}
+
+export function getAdminAuthHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...customHeaders,
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['x-admin-token'] = token;
+  }
+  return headers;
+}
+
 // In-memory runtime state for zero-latency UI reactivity; Firestore remains 100% authoritative
 let inMemoryProducts: Product[] = [];
 let inMemoryOrders: Order[] = [];
@@ -475,13 +496,25 @@ export function getStoredProducts(): Product[] {
 export async function clearAllProductsRemote(): Promise<boolean> {
   console.log('[CLEAR_ALL_PRODUCTS_START]');
   try {
-    const snap = await getDocs(collection(db, 'products'));
-    const batch = writeBatch(db);
-    snap.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-    console.log(`[CLEAR_ALL_PRODUCTS_SUCCESS] Cleared ${snap.size} products from Firestore`);
+    const res = await fetch('/api/admin/clear-all-products', {
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+    });
+    if (!res.ok) {
+      const snap = await getDocs(collection(db, 'products'));
+      const batch = writeBatch(db);
+      snap.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+    console.log('[CLEAR_ALL_PRODUCTS_SUCCESS]');
   } catch (e) {
     console.error('Error clearing products in Firestore:', e);
+    try {
+      const snap = await getDocs(collection(db, 'products'));
+      const batch = writeBatch(db);
+      snap.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    } catch (fsErr) {}
   }
   inMemoryProducts = [];
   notifyTabsOfChange();
@@ -491,16 +524,32 @@ export async function clearAllProductsRemote(): Promise<boolean> {
 export async function loadDemoProductsRemote(): Promise<Product[]> {
   console.log('[LOAD_DEMO_PRODUCTS_START]');
   try {
-    const batch = writeBatch(db);
-    DEMO_PRODUCTS.forEach((p) => {
-      if (p && p.id) {
-        batch.set(doc(db, 'products', p.id), cleanForFirestore(p));
-      }
+    const res = await fetch('/api/admin/load-demo-products', {
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+      body: JSON.stringify({ products: DEMO_PRODUCTS }),
     });
-    await batch.commit();
+    if (!res.ok) {
+      const batch = writeBatch(db);
+      DEMO_PRODUCTS.forEach((p) => {
+        if (p && p.id) {
+          batch.set(doc(db, 'products', p.id), cleanForFirestore(p));
+        }
+      });
+      await batch.commit();
+    }
     console.log(`[LOAD_DEMO_PRODUCTS_SUCCESS] Loaded ${DEMO_PRODUCTS.length} demo products to Firestore`);
   } catch (e) {
     console.error('Error loading demo products to Firestore:', e);
+    try {
+      const batch = writeBatch(db);
+      DEMO_PRODUCTS.forEach((p) => {
+        if (p && p.id) {
+          batch.set(doc(db, 'products', p.id), cleanForFirestore(p));
+        }
+      });
+      await batch.commit();
+    } catch (fsErr) {}
   }
   inMemoryProducts = [...DEMO_PRODUCTS];
   notifyTabsOfChange();
@@ -527,21 +576,31 @@ export async function saveSingleProduct(product: Product, actor?: string): Promi
     ...product, 
     createdAt: product.createdAt || now,
     updatedAt: now,
-    authInfo: {
-      adminAuthorized: true,
-      timestamp: now,
-    }
   };
   
   const payload = cleanForFirestore(cleanP);
 
-  // 1. Direct authoritative write to Firestore with strict await
+  // 1. Authoritative write through server API proxy or Firestore
   try {
-    await setDoc(doc(db, 'products', cleanP.id), payload);
-    console.log('[FIRESTORE_WRITE_SUCCESS]', { id: cleanP.id, title: cleanP.title, updatedAt: cleanP.updatedAt });
+    const res = await fetch('/api/products/save', {
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+      body: JSON.stringify({ product: cleanP, actor: actor || 'مدیریت (Admin Panel)' }),
+    });
+    if (res.ok) {
+      console.log('[API_PRODUCT_WRITE_SUCCESS]', { id: cleanP.id, title: cleanP.title });
+    } else {
+      await setDoc(doc(db, 'products', cleanP.id), payload);
+      console.log('[FIRESTORE_WRITE_SUCCESS]', { id: cleanP.id, title: cleanP.title });
+    }
   } catch (err: any) {
-    console.error('[PRODUCT_CREATE_ERROR] Firestore write failed:', err);
-    throw new Error(err?.message || 'خطا در برقراری ارتباط و ذخیره در دیتابیس Firestore');
+    try {
+      await setDoc(doc(db, 'products', cleanP.id), payload);
+      console.log('[FIRESTORE_FALLBACK_WRITE_SUCCESS]', { id: cleanP.id, title: cleanP.title });
+    } catch (fsErr: any) {
+      console.error('[PRODUCT_CREATE_ERROR] Firestore write failed:', fsErr);
+      throw new Error(fsErr?.message || 'خطا در برقراری ارتباط و ذخیره در دیتابیس Firestore');
+    }
   }
 
   // 2. In-memory runtime state update
@@ -762,10 +821,6 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
   const updatedSettings: StoreSettings = {
     ...settings,
     updatedAt: settings.updatedAt || new Date().toISOString(),
-    authInfo: {
-      adminAuthorized: true,
-      timestamp: new Date().toISOString(),
-    },
   };
 
   try {
@@ -775,21 +830,26 @@ export async function saveStoredSettings(settings: StoreSettings): Promise<boole
     console.error('Error saving settings locally:', err);
   }
 
-  // 1. Authoritative Firestore settings write with strict await
+  // 1. Authoritative write through backend API proxy
   try {
-    await setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(updatedSettings));
-    console.log('[FIRESTORE_SETTINGS_SUCCESS]');
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+      body: JSON.stringify({ settings: updatedSettings }),
+    });
+    if (!res.ok) {
+      await setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(updatedSettings));
+    }
+    console.log('[SETTINGS_SAVE_SUCCESS]');
   } catch (err) {
-    console.error('[FIRESTORE_SETTINGS_ERROR]', err);
-    handleFirestoreError(err, OperationType.WRITE, 'settings/store_settings');
+    try {
+      await setDoc(doc(db, 'settings', 'store_settings'), cleanForFirestore(updatedSettings));
+      console.log('[FIRESTORE_SETTINGS_SUCCESS]');
+    } catch (fsErr) {
+      console.error('[FIRESTORE_SETTINGS_ERROR]', fsErr);
+      handleFirestoreError(fsErr, OperationType.WRITE, 'settings/store_settings');
+    }
   }
-
-  // 2. Mirror to Server API
-  fetch('/api/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ settings: updatedSettings }),
-  }).catch(() => {});
 
   return true;
 }
@@ -798,13 +858,24 @@ export async function deleteProductFromFirestore(productId: string, actor?: stri
   if (!productId) return false;
   console.log('[PRODUCT_DELETE_START]', productId);
 
-  // 1. Authoritative Firestore deletion with strict await
+  // 1. Authoritative deletion through API proxy or direct Firestore
   try {
-    await deleteDoc(doc(db, 'products', productId));
-    console.log('[FIRESTORE_DELETE_SUCCESS]', productId);
+    const res = await fetch(`/api/products/${encodeURIComponent(productId)}`, {
+      method: 'DELETE',
+      headers: getAdminAuthHeaders(),
+    });
+    if (!res.ok) {
+      await deleteDoc(doc(db, 'products', productId));
+    }
+    console.log('[PRODUCT_DELETE_SUCCESS]', productId);
   } catch (err: any) {
-    console.error('[PRODUCT_DELETE_ERROR]', err);
-    throw new Error(err?.message || 'خطا در حذف محصول از دیتابیس Firestore');
+    try {
+      await deleteDoc(doc(db, 'products', productId));
+      console.log('[FIRESTORE_DELETE_SUCCESS]', productId);
+    } catch (fsErr: any) {
+      console.error('[PRODUCT_DELETE_ERROR]', fsErr);
+      throw new Error(fsErr?.message || 'خطا در حذف محصول از دیتابیس Firestore');
+    }
   }
 
   // 2. In-memory runtime state update
@@ -817,14 +888,25 @@ export async function deleteProductFromFirestore(productId: string, actor?: stri
 export async function deleteOrderFromFirestore(orderId: string, actor?: string): Promise<boolean> {
   if (!orderId) return false;
 
-  // 1. Authoritative Firestore deletion with strict await
+  // 1. Authoritative Firestore deletion with API proxy or direct fallback
   try {
-    await deleteDoc(doc(db, 'orders', orderId));
-    console.log('[FIRESTORE_ORDER_DELETE_SUCCESS]', orderId);
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      method: 'DELETE',
+      headers: getAdminAuthHeaders(),
+    });
+    if (!res.ok) {
+      await deleteDoc(doc(db, 'orders', orderId));
+    }
+    console.log('[ORDER_DELETE_SUCCESS]', orderId);
   } catch (err: any) {
-    console.error('[ORDER_DELETE_ERROR]', err);
-    handleFirestoreError(err, OperationType.DELETE, `orders/${orderId}`);
-    throw new Error(err?.message || 'خطا در حذف سفارش از دیتابیس فایراستور');
+    try {
+      await deleteDoc(doc(db, 'orders', orderId));
+      console.log('[FIRESTORE_ORDER_DELETE_SUCCESS]', orderId);
+    } catch (fsErr: any) {
+      console.error('[ORDER_DELETE_ERROR]', fsErr);
+      handleFirestoreError(fsErr, OperationType.DELETE, `orders/${orderId}`);
+      throw new Error(fsErr?.message || 'خطا در حذف سفارش از دیتابیس فایراستور');
+    }
   }
 
   // 2. In-memory runtime state update
@@ -844,20 +926,34 @@ export async function updateOrderStatusRemote(
   if (!orderId) return false;
 
   const patch: Record<string, any> = {
+    orderId,
     status,
     updatedAt: new Date().toISOString(),
   };
   if (postalTrackingCode !== undefined) patch.postalTrackingCode = postalTrackingCode;
   if (adminNote !== undefined) patch.adminNote = adminNote;
+  if (actor) patch.actor = actor;
 
-  // 1. Authoritative Firestore update with strict await
+  // 1. Authoritative update through API proxy or direct Firestore
   try {
-    await updateDoc(doc(db, 'orders', orderId), patch);
-    console.log('[FIRESTORE_ORDER_STATUS_SUCCESS]', orderId, status);
+    const res = await fetch('/api/orders/update-status', {
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      await updateDoc(doc(db, 'orders', orderId), patch);
+    }
+    console.log('[ORDER_STATUS_SUCCESS]', orderId, status);
   } catch (err: any) {
-    console.error('[ORDER_STATUS_UPDATE_ERROR]', err);
-    handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
-    throw new Error(err?.message || 'خطا در به‌روزرسانی وضعیت سفارش در دیتابیس فایراستور');
+    try {
+      await updateDoc(doc(db, 'orders', orderId), patch);
+      console.log('[FIRESTORE_ORDER_STATUS_SUCCESS]', orderId, status);
+    } catch (fsErr: any) {
+      console.error('[ORDER_STATUS_UPDATE_ERROR]', fsErr);
+      handleFirestoreError(fsErr, OperationType.UPDATE, `orders/${orderId}`);
+      throw new Error(fsErr?.message || 'خطا در به‌روزرسانی وضعیت سفارش در دیتابیس فایراستور');
+    }
   }
 
   // 2. In-memory runtime state update
@@ -867,20 +963,16 @@ export async function updateOrderStatusRemote(
   return true;
 }
 
-// Fetch authoritative shared data directly from Firestore
+// Fetch authoritative shared data directly from Firestore or backend API
 export async function fetchServerData(): Promise<{ products: Product[]; orders: Order[]; settings: StoreSettings }> {
   let fsProducts: Product[] | null = null;
   let fsOrders: Order[] | null = null;
   let fsSettings: StoreSettings | null = null;
 
   try {
-    const [productsSnap, ordersSnap, settingsDoc] = await Promise.all([
+    const [productsSnap, settingsDoc] = await Promise.all([
       withTimeout(getDocs(collection(db, 'products')), 4000).catch((err) => {
         handleFirestoreError(err, OperationType.LIST, 'products');
-        return null;
-      }),
-      withTimeout(getDocs(collection(db, 'orders')), 3000).catch((err) => {
-        handleFirestoreError(err, OperationType.LIST, 'orders');
         return null;
       }),
       withTimeout(getDoc(doc(db, 'settings', 'store_settings')), 3000).catch((err) => {
@@ -899,16 +991,57 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
       });
       inMemoryProducts = [...fsProducts];
     }
-    if (ordersSnap) {
-      fsOrders = [];
-      ordersSnap.forEach((d) => d.exists() && fsOrders!.push(d.data() as Order));
-      inMemoryOrders = [...fsOrders];
-    }
+
     if (settingsDoc && settingsDoc.exists()) {
       fsSettings = settingsDoc.data() as StoreSettings;
     }
   } catch (e) {
     console.warn('Firestore fetch notice in fetchServerData:', e);
+  }
+
+  // If products weren't fetched from client SDK, fallback to backend API
+  if (!fsProducts || fsProducts.length === 0) {
+    try {
+      const pRes = await fetch('/api/products');
+      if (pRes.ok) {
+        const pJson = await pRes.json();
+        if (Array.isArray(pJson) && pJson.length > 0) {
+          fsProducts = pJson;
+          inMemoryProducts = [...fsProducts];
+        }
+      }
+    } catch (e) {}
+  }
+
+  // If settings weren't fetched from client SDK, fallback to backend API
+  if (!fsSettings) {
+    try {
+      const sRes = await fetch('/api/settings');
+      if (sRes.ok) {
+        const sJson = await sRes.json();
+        if (sJson.success && sJson.settings) {
+          fsSettings = sJson.settings;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Admin order fetching: if admin token present or admin session active, query orders
+  if (getAdminToken()) {
+    try {
+      const ordRes = await fetch('/api/orders', {
+        headers: getAdminAuthHeaders(),
+      });
+      if (ordRes.ok) {
+        const ordJson = await ordRes.json();
+        if (ordJson.success && Array.isArray(ordJson.orders)) {
+          fsOrders = ordJson.orders;
+          inMemoryOrders = [...fsOrders];
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load admin orders from /api/orders:', e);
+    }
   }
 
   const products = fsProducts || inMemoryProducts || [];
@@ -1133,10 +1266,13 @@ export function subscribeToAuditLogs(
 // Fetch audit logs from server API
 export async function fetchAuditLogs(): Promise<AuditLogEntry[]> {
   try {
-    const res = await fetch('/api/audit-logs', { cache: 'no-store' });
+    const res = await fetch('/api/audit-logs', { 
+      cache: 'no-store',
+      headers: getAdminAuthHeaders(),
+    });
     if (res.ok) {
       const data = await res.json();
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data.logs) ? data.logs : (Array.isArray(data) ? data : []);
     }
   } catch (e) {
     console.warn('Failed to fetch audit logs from backend API:', e);
@@ -1147,7 +1283,10 @@ export async function fetchAuditLogs(): Promise<AuditLogEntry[]> {
 // Clear audit logs on server and Firestore
 export async function clearAuditLogsRemote(): Promise<boolean> {
   try {
-    const res = await fetch('/api/audit-logs/clear', { method: 'POST' });
+    const res = await fetch('/api/audit-logs/clear', { 
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+    });
     return res.ok;
   } catch (e) {
     return false;
@@ -1167,7 +1306,7 @@ export async function recordAuditLog(entry: {
   try {
     const res = await fetch('/api/audit-logs', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify(entry),
     });
     return res.ok;
@@ -1184,7 +1323,7 @@ export async function triggerTestFirestoreWebhook(
   try {
     const res = await fetch('/api/webhooks/test-firestore-trigger', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminAuthHeaders(),
       body: JSON.stringify({ type, customMessage }),
     });
     return await res.json();

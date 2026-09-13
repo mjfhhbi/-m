@@ -27,10 +27,6 @@ export interface Product {
   ogImage?: string;
   createdAt: string;
   updatedAt?: string;
-  authInfo?: {
-    adminAuthorized?: boolean;
-    timestamp?: string;
-  };
 }
 
 export interface CartItem {
@@ -131,10 +127,6 @@ export interface StoreSettings {
   instagram: string;
   telegram?: string;
   telegramWebhookUrl?: string;
-  authInfo?: {
-    adminAuthorized?: boolean;
-    timestamp?: string;
-  };
   ntfyEnabled?: boolean;
   ntfyTopic?: string;
   ntfyServerUrl?: string;

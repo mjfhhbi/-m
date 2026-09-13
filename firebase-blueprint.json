@@ -60,8 +60,7 @@
         "cardNumber": { "type": "string" },
         "shabaNumber": { "type": "string" },
         "bankName": { "type": "string" },
-        "aboutUs": { "type": "string" },
-        "adminPassword": { "type": "string" }
+        "aboutUs": { "type": "string" }
       }
     },
     "audit_logs": {

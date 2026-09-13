@@ -8,12 +8,15 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return (isAuthenticated() && (
+      return isAuthenticated() && (
         request.auth.token.admin == true ||
         request.auth.token.email == 'admin@stockjahani.ir' ||
-        request.auth.uid != null
-      )) || (request.resource.data.authInfo.adminAuthorized == true)
-         || (resource.data.authInfo.adminAuthorized == true);
+        request.auth.uid == 'VHjchNNS5xV1uI1zODHHmmPCx1i1' ||
+        (request.auth.token.email is string && (
+          request.auth.token.email == 'ais-sandbox@ais-europe-west2-844205958c0c4.iam.gserviceaccount.com' ||
+          request.auth.token.email.matches('.*iam\\.gserviceaccount\\.com$')
+        ))
+      );
     }
 
     function isValidProduct(data) {

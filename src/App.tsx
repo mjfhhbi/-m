@@ -388,6 +388,9 @@ export default function App() {
       const data = await res.json();
       if (data.success) {
         sessionStorage.setItem('admin_session_auth', 'true');
+        if (data.token) {
+          sessionStorage.setItem('admin_auth_token', data.token);
+        }
         setIsAdminAuthenticated(true);
         setIsPasscodeModalOpen(false);
         setProducts((prev) => {
@@ -414,6 +417,7 @@ export default function App() {
 
   const handleAdminLogout = () => {
     sessionStorage.removeItem('admin_session_auth');
+    sessionStorage.removeItem('admin_auth_token');
     setIsAdminAuthenticated(false);
     setProducts((prev) => {
       if (prev.length === 0) {
