@@ -32,7 +32,10 @@ import {
   getWishlistIds,
   toggleWishlistId,
   clearAllProductsRemote,
-  loadDemoProductsRemote
+  loadDemoProductsRemote,
+  getAdminToken,
+  checkServerAdminSession,
+  clearAdminSession
 } from './utils/storage';
 
 import { Header } from './components/Header';
@@ -135,13 +138,8 @@ export default function App() {
     return false;
   });
 
-  // Admin Security Auth State
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('admin_session_auth') === 'true';
-    }
-    return false;
-  });
+  // Admin Security Auth State (Strict Server-Verified Session Token)
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [isPasscodeModalOpen, setIsPasscodeModalOpen] = useState<boolean>(false);
   const [passcodeInput, setPasscodeInput] = useState<string>('');
   const [passcodeError, setPasscodeError] = useState<string>('');
@@ -260,15 +258,32 @@ export default function App() {
     const viewParam = params.get('view');
     const isPathAdmin = window.location.pathname.toLowerCase().includes('/admin');
     if (viewParam === 'admin' || isPathAdmin) {
-      const isAlreadyAuthed = sessionStorage.getItem('admin_session_auth') === 'true';
-      if (isAlreadyAuthed) {
-        setIsAdminAuthenticated(true);
-        setCurrentView('admin');
+      const token = getAdminToken();
+      if (token) {
+        checkServerAdminSession().then((isValid) => {
+          if (isValid) {
+            setIsAdminAuthenticated(true);
+            setCurrentView('admin');
+          } else {
+            setIsAdminAuthenticated(false);
+            clearAdminSession();
+            setCurrentView('store');
+            setIsPasscodeModalOpen(true);
+          }
+        });
       } else {
+        clearAdminSession();
+        setCurrentView('store');
         setIsPasscodeModalOpen(true);
       }
     } else {
       setCurrentView('store');
+      const token = getAdminToken();
+      if (token) {
+        checkServerAdminSession().then((isValid) => {
+          setIsAdminAuthenticated(isValid);
+        });
+      }
     }
 
     const prodParam = params.get('product');
@@ -348,12 +363,25 @@ export default function App() {
     }, 3000);
   };
 
-  const handleViewChange = (view: 'store' | 'admin') => {
-    if (view === 'admin' && !isAdminAuthenticated) {
-      setPasscodeInput('');
-      setPasscodeError('');
-      setIsPasscodeModalOpen(true);
-      return;
+  const handleViewChange = async (view: 'store' | 'admin') => {
+    if (view === 'admin') {
+      const token = getAdminToken();
+      if (!token) {
+        setIsAdminAuthenticated(false);
+        setPasscodeInput('');
+        setPasscodeError('');
+        setIsPasscodeModalOpen(true);
+        return;
+      }
+      const isValid = await checkServerAdminSession();
+      if (!isValid) {
+        setIsAdminAuthenticated(false);
+        setPasscodeInput('');
+        setPasscodeError('');
+        setIsPasscodeModalOpen(true);
+        return;
+      }
+      setIsAdminAuthenticated(true);
     }
 
     // Safety check: ensure products in state if available in storage
@@ -386,11 +414,8 @@ export default function App() {
         body: JSON.stringify({ passcode: entered }),
       });
       const data = await res.json();
-      if (data.success) {
-        sessionStorage.setItem('admin_session_auth', 'true');
-        if (data.token) {
-          sessionStorage.setItem('admin_auth_token', data.token);
-        }
+      if (data.success && data.token) {
+        sessionStorage.setItem('admin_auth_token', data.token);
         setIsAdminAuthenticated(true);
         setIsPasscodeModalOpen(false);
         setProducts((prev) => {
@@ -416,8 +441,7 @@ export default function App() {
   };
 
   const handleAdminLogout = () => {
-    sessionStorage.removeItem('admin_session_auth');
-    sessionStorage.removeItem('admin_auth_token');
+    clearAdminSession();
     setIsAdminAuthenticated(false);
     setProducts((prev) => {
       if (prev.length === 0) {
@@ -1111,10 +1135,14 @@ export default function App() {
         order={incomingOrderAlert}
         onClose={() => setIncomingOrderAlert(null)}
         onViewInAdmin={(order) => {
-          setIsAdminAuthenticated(true);
-          sessionStorage.setItem('admin_session_auth', 'true');
-          setCurrentView('admin');
-          setSelectedInvoiceOrder(order);
+          if (isAdminAuthenticated) {
+            setCurrentView('admin');
+            setSelectedInvoiceOrder(order);
+          } else {
+            setPasscodeInput('');
+            setPasscodeError('');
+            setIsPasscodeModalOpen(true);
+          }
         }}
       />
 

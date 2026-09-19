@@ -57,6 +57,42 @@ export function getAdminToken(): string {
   return '';
 }
 
+export function clearAdminSession(): void {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('admin_auth_token');
+    sessionStorage.removeItem('admin_session_auth');
+    sessionStorage.removeItem('adminAuthorized');
+    sessionStorage.removeItem('admin');
+    localStorage.removeItem('admin_auth_token');
+    localStorage.removeItem('admin_session_auth');
+    localStorage.removeItem('adminAuthorized');
+    localStorage.removeItem('admin');
+  }
+}
+
+export async function checkServerAdminSession(): Promise<boolean> {
+  const token = getAdminToken();
+  if (!token) {
+    clearAdminSession();
+    return false;
+  }
+  try {
+    const res = await fetch('/api/admin/verify-session', {
+      headers: getAdminAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.authenticated === true) {
+        return true;
+      }
+    }
+  } catch (e) {
+    // Network or server issue
+  }
+  clearAdminSession();
+  return false;
+}
+
 export function getAdminAuthHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
   const token = getAdminToken();
   const headers: Record<string, string> = {
@@ -72,7 +108,6 @@ export function getAdminAuthHeaders(customHeaders: Record<string, string> = {}):
 
 // In-memory runtime state for zero-latency UI reactivity; Firestore remains 100% authoritative
 let inMemoryProducts: Product[] = [];
-let inMemoryOrders: Order[] = [];
 const SETTINGS_KEY = 'stock_jahani_settings_v1';
 
 export function getProductTimestamp(item: any): number {
@@ -622,13 +657,12 @@ export async function saveStoredProducts(products: Product[]): Promise<boolean> 
 }
 
 export function getStoredOrders(): Order[] {
-  return [...inMemoryOrders];
+  return [];
 }
 
 export async function resetAllStoreData(): Promise<boolean> {
   try {
     inMemoryProducts = [];
-    inMemoryOrders = [];
     notifyTabsOfChange();
 
     try {
@@ -719,8 +753,6 @@ export function mergeOrdersList(...lists: Order[][]): Order[] {
 }
 
 export async function saveStoredOrders(orders: Order[]): Promise<boolean> {
-  const validOrders = (orders || []).filter((o) => o && o.id);
-  inMemoryOrders = validOrders;
   notifyTabsOfChange();
   return true;
 }
@@ -790,9 +822,6 @@ export async function saveSingleOrder(order: Order, actor?: string): Promise<{ s
     });
 
     console.log('[FIRESTORE_ORDER_TRANSACTION_SUCCESS]', cleanOrder.id);
-
-    // 2. In-memory runtime state update
-    inMemoryOrders = [cleanOrder, ...inMemoryOrders.filter((o) => o.id !== cleanOrder.id)];
     notifyTabsOfChange();
 
     return { success: true };
@@ -909,8 +938,6 @@ export async function deleteOrderFromFirestore(orderId: string, actor?: string):
     }
   }
 
-  // 2. In-memory runtime state update
-  inMemoryOrders = inMemoryOrders.filter((o) => o.id !== orderId);
   notifyTabsOfChange();
 
   return true;
@@ -956,8 +983,6 @@ export async function updateOrderStatusRemote(
     }
   }
 
-  // 2. In-memory runtime state update
-  inMemoryOrders = inMemoryOrders.map((o) => (o.id === orderId ? { ...o, ...patch } : o));
   notifyTabsOfChange();
 
   return true;
@@ -1036,7 +1061,6 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
         const ordJson = await ordRes.json();
         if (ordJson.success && Array.isArray(ordJson.orders)) {
           fsOrders = ordJson.orders;
-          inMemoryOrders = [...fsOrders];
         }
       }
     } catch (e) {
@@ -1051,7 +1075,7 @@ export async function fetchServerData(): Promise<{ products: Product[]; orders: 
     return timeB - timeA;
   });
 
-  const orders = fsOrders || inMemoryOrders || [];
+  const orders = fsOrders || [];
   orders.sort((a, b) => {
     const timeA = new Date(a.createdAt || 0).getTime();
     const timeB = new Date(b.createdAt || 0).getTime();
@@ -1071,10 +1095,6 @@ export function subscribeToFirestore(
 ) {
   const ordersMap = new Map<string, Order>();
   let hasInitialOrdersLoaded = false;
-
-  inMemoryOrders.forEach((o) => {
-    if (o && o.id) ordersMap.set(o.id, o);
-  });
 
   let unsubFsProducts: (() => void) | null = null;
   let unsubFsOrders: (() => void) | null = null;
@@ -1142,7 +1162,6 @@ export function subscribeToFirestore(
           (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
         );
 
-        inMemoryOrders = fsOrds;
         onDataUpdate({ orders: fsOrds, newOrders: newlyAddedOrders });
       },
       (err) => {
@@ -1200,7 +1219,7 @@ export function subscribeToFirestore(
   }
 
   const handleCrossTabSync = () => {
-    onDataUpdate({ products: [...inMemoryProducts], orders: [...inMemoryOrders] });
+    onDataUpdate({ products: [...inMemoryProducts] });
   };
 
   if (syncChannel) {

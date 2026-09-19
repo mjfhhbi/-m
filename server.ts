@@ -611,6 +611,16 @@ app.post(["/api/admin/verify-passcode", "/api/admin/login"], (req, res) => {
   return res.status(401).json({ success: false, error: "رمز عبور وارد شده اشتباه است" });
 });
 
+app.all("/api/admin/verify-session", (req, res) => {
+  const authHeader = req.headers['authorization'] || req.headers['x-admin-token'];
+  const token = typeof authHeader === 'string' ? authHeader : '';
+  const isValid = verifyAdminToken(token);
+  if (isValid) {
+    return res.json({ success: true, authenticated: true });
+  }
+  return res.status(401).json({ success: false, authenticated: false, error: "نشست نامعتبر یا منقضی شده است." });
+});
+
 app.get("/api/products", async (req, res) => {
   const products = await fetchProductsFromFirestore();
   res.json(products);
@@ -1459,10 +1469,10 @@ app.post("/api/functions/mutate-order", async (req, res) => {
     const actorName = actor || (order?.customer?.fullName ? `مشتری: ${order.customer.fullName}` : "سیستم");
 
     if (action === "delete") {
-      const authHeader = req.headers.authorization || '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-      if (!token || !activeAdminSessions.has(token)) {
-        return res.status(403).json({ error: "Admin authorization required to delete orders" });
+      const authHeader = req.headers.authorization || req.headers['x-admin-token'] || '';
+      const token = typeof authHeader === 'string' ? authHeader : '';
+      if (!verifyAdminToken(token)) {
+        return res.status(401).json({ error: "Admin authorization required to delete orders" });
       }
 
       const targetId = orderId || order?.id;
@@ -1483,10 +1493,10 @@ app.post("/api/functions/mutate-order", async (req, res) => {
     }
 
     if (action === "update_status") {
-      const authHeader = req.headers.authorization || '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-      if (!token || !activeAdminSessions.has(token)) {
-        return res.status(403).json({ error: "Admin authorization required to change order status" });
+      const authHeader = req.headers.authorization || req.headers['x-admin-token'] || '';
+      const token = typeof authHeader === 'string' ? authHeader : '';
+      if (!verifyAdminToken(token)) {
+        return res.status(401).json({ error: "Admin authorization required to change order status" });
       }
 
       const targetId = orderId || order?.id;
@@ -1894,13 +1904,6 @@ app.post("/api/settings", verifyAdminAuth, async (req, res) => {
   res.json({ success: true, settings: merged });
 });
 
-app.post("/api/sync-all", (req, res) => {
-  res.status(410).json({
-    status: "deprecated",
-    sourceOfTruth: "firestore",
-    message: "Firestore is the sole authoritative Source of Truth. Direct Firestore operations are used."
-  });
-});
 
 export default app;
 
