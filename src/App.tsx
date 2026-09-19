@@ -828,7 +828,7 @@ export default function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
           >
-            {currentView === 'store' ? (
+            {currentView === 'store' || !isAdminAuthenticated ? (
               <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8">
                 
                 {/* Hero Section */}

@@ -32,6 +32,15 @@ service cloud.firestore {
         && newData.title == currentData.title
         && newData.price == currentData.price
         && newData.category == currentData.category
+        && (!('code' in currentData) || newData.code == currentData.code)
+        && (!('images' in currentData) || newData.images == currentData.images)
+        && (!('image' in currentData) || newData.image == currentData.image)
+        && (!('description' in currentData) || newData.description == currentData.description)
+        && (!('discount' in currentData) || newData.discount == currentData.discount)
+        && (!('originalPrice' in currentData) || newData.originalPrice == currentData.originalPrice)
+        && (!('brand' in currentData) || newData.brand == currentData.brand)
+        && (!('isFeatured' in currentData) || newData.isFeatured == currentData.isFeatured)
+        && (!('isSpecialOffer' in currentData) || newData.isSpecialOffer == currentData.isSpecialOffer)
         && newData.stock is number
         && newData.stock >= 0
         && newData.stock < currentData.stock
