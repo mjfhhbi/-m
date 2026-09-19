@@ -9,8 +9,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.admin == true ||
-        request.auth.token.email == 'admin@stockjahani.ir' ||
+        (request.auth.token.admin == true && request.auth.token.firebase.sign_in_provider != 'anonymous') ||
+        (request.auth.token.email_verified == true && request.auth.token.email == 'admin@stockjahani.ir') ||
         request.auth.uid == 'VHjchNNS5xV1uI1zODHHmmPCx1i1' ||
         (request.auth.token.email is string && (
           request.auth.token.email == 'ais-sandbox@ais-europe-west2-844205958c0c4.iam.gserviceaccount.com' ||
@@ -26,27 +26,6 @@ service cloud.firestore {
         && data.category is string;
     }
 
-    function isStockDecrement(currentData, newData) {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'updatedAt'])
-        && request.resource.data.diff(resource.data).affectedKeys().hasAny(['stock'])
-        && newData.title == currentData.title
-        && newData.price == currentData.price
-        && newData.category == currentData.category
-        && (!('code' in currentData) || newData.code == currentData.code)
-        && (!('images' in currentData) || newData.images == currentData.images)
-        && (!('image' in currentData) || newData.image == currentData.image)
-        && (!('description' in currentData) || newData.description == currentData.description)
-        && (!('discount' in currentData) || newData.discount == currentData.discount)
-        && (!('originalPrice' in currentData) || newData.originalPrice == currentData.originalPrice)
-        && (!('brand' in currentData) || newData.brand == currentData.brand)
-        && (!('isFeatured' in currentData) || newData.isFeatured == currentData.isFeatured)
-        && (!('isSpecialOffer' in currentData) || newData.isSpecialOffer == currentData.isSpecialOffer)
-        && newData.stock is number
-        && newData.stock >= 0
-        && newData.stock < currentData.stock
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['updatedAt']) || newData.updatedAt is string);
-    }
-
     function isValidOrder(data) {
       return data.orderCode is string && data.orderCode.size() >= 4
         && data.finalAmount is number && data.finalAmount >= 0
@@ -58,14 +37,12 @@ service cloud.firestore {
 
     // 1. Products:
     // - Public catalog reading allowed
-    // - Full Create/Update restricted to Admin with strict schema validation
-    // - Stock decrement allowed during valid checkout
-    // - Delete strictly Admin only
+    // - Full Create/Update/Delete strictly restricted to verified Admin with strict schema validation
+    // - No anonymous or standard client can directly mutate products
     match /products/{productId} {
       allow read: if true;
       allow create: if isAdmin() && isValidProduct(request.resource.data);
-      allow update: if (isAdmin() && isValidProduct(request.resource.data))
-                   || isStockDecrement(resource.data, request.resource.data);
+      allow update: if isAdmin() && isValidProduct(request.resource.data);
       allow delete: if isAdmin();
     }
 
