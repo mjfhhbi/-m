@@ -8,15 +8,9 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && (
-        (request.auth.token.admin == true && request.auth.token.firebase.sign_in_provider != 'anonymous') ||
-        (request.auth.token.email_verified == true && request.auth.token.email == 'admin@stockjahani.ir') ||
-        request.auth.uid == 'VHjchNNS5xV1uI1zODHHmmPCx1i1' ||
-        (request.auth.token.email is string && (
-          request.auth.token.email == 'ais-sandbox@ais-europe-west2-844205958c0c4.iam.gserviceaccount.com' ||
-          request.auth.token.email.matches('.*iam\\.gserviceaccount\\.com$')
-        ))
-      );
+      return isAuthenticated()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && request.auth.token.admin == true;
     }
 
     function isValidProduct(data) {
@@ -73,21 +67,15 @@ service cloud.firestore {
     }
 
     // 4. Audit logs:
-    // - Creation allowed for order transactions & admin actions
-    // - Read, update, delete strictly restricted to Admin
+    // - Management audit logs strictly restricted to Admin
     match /audit_logs/{logId} {
-      allow create: if request.resource.data.action is string;
-      allow read, update, delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     // 5. Analytics & Visitor stats:
-    // - Read strictly restricted to Admin
-    // - View counter updates allowed with numeric validation
-    // - Delete strictly Admin
+    // - Management analytics data strictly restricted to Admin
     match /analytics/{docId} {
-      allow read: if isAdmin();
-      allow create, update: if request.resource.data.totalViews is number || isAdmin();
-      allow delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     // 6. Admin Secrets:
